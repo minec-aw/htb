@@ -75,8 +75,9 @@ plugin:hyprtouchbar {
     # CSD handling
     csd_detection = auto
     csd_drag_enabled = true
+    csd_touch_emulation = true
 
-    # Optional legacy approximation; normally leave disabled
+    # Optional legacy forced-drag approximation; normally leave disabled
     csd_drag_fallback = false
     csd_titlebar_height = 48
     csd_controls_left = 0
@@ -143,11 +144,11 @@ Other dynamic rule effects are `hyprtouchbar:bar_color` and `hyprtouchbar:title_
 
 ## CSD dragging notes
 
-The default path does **not** place an input strip over the application. The client receives touch normally and decides whether the touched pixel is draggable by sending `xdg_toplevel.move`. Hyprtouchbar accepts the valid touch serial and takes over only after that request. This preserves Chromium tab dragging, tab detaching, navigation buttons, and other toolbar controls while allowing empty titlebar regions to move the window.
+With `csd_touch_emulation = true` (the default), touches in the top `csd_titlebar_height` pixels are forwarded to the client as pointer input rather than being turned directly into a window drag. Chromium and Qt therefore perform their own exact hit testing: tabs reorder/detach, navigation buttons click, and only genuinely draggable regions issue `xdg_toplevel.move`. The region is an input-compatibility scope, not a forced drag overlay.
 
-Hyprland 0.56 accepts pointer-button serials for this request but rejects touch-down serials; the plugin augments that validation without disabling native pointer validation. Hyprland's original request handlers are restored when the plugin unloads.
+Setting `csd_touch_emulation = false` retains raw touch delivery. Hyprtouchbar can then accept an application-issued `xdg_toplevel.move` with a valid touch-down serial. Hyprland 0.56 normally validates only pointer-button serials. Native pointer validation is retained, and Hyprland's original request handlers are restored when the plugin unloads.
 
-`csd_drag_fallback = true` enables the older approximate strip for clients that never send `xdg_toplevel.move`. Only in that mode do `csd_titlebar_height`, `csd_controls_left`, and `csd_controls_right` apply. The fallback sends `wl_touch.cancel` when it takes over, but it can still conflict with tab/tool-bar gestures, so it is disabled by default.
+`csd_drag_fallback = true` enables the older forced-drag approximation for clients that issue no move request at all. In that mode `csd_controls_left` and `csd_controls_right` exclude controls from the fallback. It sends `wl_touch.cancel` when taking over, but can conflict with tab/tool-bar gestures, so it remains disabled by default.
 
 ## Lua custom buttons
 

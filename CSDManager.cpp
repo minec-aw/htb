@@ -11,6 +11,7 @@
 #include <hyprland/src/managers/SeatManager.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/config/supplementary/executor/Executor.hpp>
 #include <hyprland/src/config/shared/actions/ConfigActions.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
@@ -153,6 +154,9 @@ CCSDManager::~CCSDManager() {
             hooks.xdgResource->setMove(std::move(hooks.originalMove));
     }
 
+    if (m_emulatingPointer)
+        g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = 0, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
+
     if (m_dragging && !m_touchDrag && g_layoutManager->dragController()->target())
         g_layoutManager->endDragTarget();
     if (m_pinnedForTouchDrag) {
@@ -223,10 +227,14 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
 void CCSDManager::unregisterWindow(Desktop::View::CWindow* window) {
     m_windows.erase(window);
     if (const auto dragging = m_dragWindow.lock(); dragging && dragging.get() == window) {
+        if (m_emulatingPointer)
+            g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = 0, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
         m_dragWindow.reset();
         m_dragPending        = false;
         m_dragging           = false;
         m_pinnedForTouchDrag = false;
+        m_emulatingPointer   = false;
+        m_touchActive        = false;
     }
 }
 
@@ -441,7 +449,7 @@ void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID
 }
 
 void CCSDManager::onMouseButton(IPointer::SButtonEvent event, Event::SCallbackInfo& info) {
-    if (event.button != BTN_LEFT)
+    if (m_emulatingPointer || event.button != BTN_LEFT)
         return;
     if (event.state == WL_POINTER_BUTTON_STATE_PRESSED) {
         if (g_pGlobalState->config.csdDragFallback->value())
@@ -451,10 +459,11 @@ void CCSDManager::onMouseButton(IPointer::SButtonEvent event, Event::SCallbackIn
 }
 
 void CCSDManager::onMouseMove(const Vector2D&, Event::SCallbackInfo& info) {
-    updateDrag(info, g_pInputManager->getMouseCoordsInternal(), false, 0);
+    if (!m_emulatingPointer)
+        updateDrag(info, g_pInputManager->getMouseCoordsInternal(), false, 0);
 }
 
-void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo&) {
+void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo& info) {
     // Always remember the implicit touch grab. The application receives the
     // event and decides whether this exact pixel is draggable by issuing
     // xdg_toplevel.move; tabs, back buttons, and other widgets remain native.
@@ -480,13 +489,51 @@ void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo&) {
     m_dragging             = false;
     m_pinnedForTouchDrag   = false;
     m_clientTouchCancelled = false;
+    m_emulatingPointer     = false;
+
+    if (g_pGlobalState->config.csdDragEnabled->value() && g_pGlobalState->config.csdTouchEmulation->value() && windowHasCSD(window)) {
+        const auto box   = window->geometricBox(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        const auto local = position - box.pos();
+        if (VECINRECT(local, 0, 0, box.w, std::min<double>(box.h, g_pGlobalState->config.csdTitlebarHeight->value()))) {
+            // Forward this top-area touch as a complete pointer sequence. The
+            // client performs its own precise hit testing, so Chromium tabs,
+            // navigation buttons, and genuine drag regions all keep working.
+            m_emulatingPointer = true;
+            m_dragPending      = false;
+            Pointer::mgr()->warpTo(position);
+            g_pInputManager->refocus();
+            g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = event.timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_PRESSED, .mouse = false}, nullptr);
+            info.cancelled = true;
+        }
+    }
 }
 
 void CCSDManager::onTouchMove(ITouch::SMotionEvent event, Event::SCallbackInfo& info) {
+    if (m_emulatingPointer && m_touchActive && event.touchID == m_touchID) {
+        Pointer::mgr()->warpTo(touchPosition(event));
+        g_pInputManager->simulateMouseMovement();
+        info.cancelled = true;
+        return;
+    }
     updateDrag(info, touchPosition(event), true, event.touchID);
 }
 
 void CCSDManager::onTouchUp(ITouch::SUpEvent event, Event::SCallbackInfo& info) {
+    if (m_emulatingPointer && m_touchActive && event.touchID == m_touchID) {
+        g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = event.timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
+        info.cancelled         = true;
+        m_emulatingPointer     = false;
+        m_touchActive          = false;
+        m_clientTouchCancelled = false;
+        m_touchID              = -1;
+        m_dragPending          = false;
+        m_dragging             = false;
+        m_pinnedForTouchDrag   = false;
+        m_dragWindow.reset();
+        m_touchMonitor.reset();
+        return;
+    }
+
     if (m_dragPending) {
         finishDrag(info, true, event.touchID);
         return;

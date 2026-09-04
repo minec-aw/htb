@@ -56,6 +56,7 @@ class CCSDManager {
     bool                                                      m_pinnedForTouchDrag   = false;
     bool                                                      m_touchActive          = false;
     bool                                                      m_clientTouchCancelled = false;
+    bool                                                      m_emulatingPointer     = false;
 
     void                                                      unregisterWindow(Desktop::View::CWindow* window);
     void                                                      applySuppression(const PHLWINDOW& window);
