@@ -45,6 +45,8 @@ class CCSDManager {
     bool                                                      m_touchDrag   = false;
     int                                                       m_touchID     = -1;
     PHLMONITORREF                                             m_touchMonitor;
+    Vector2D                                                  m_dragGrabOffset;
+    bool                                                      m_pinnedForTouchDrag = false;
 
     void                                                      unregisterWindow(Desktop::View::CWindow* window);
     void                                                      applySuppression(const PHLWINDOW& window);
@@ -54,7 +56,7 @@ class CCSDManager {
     bool                                                      inDragRegion(const PHLWINDOW& window, const Vector2D& position) const;
     Vector2D                                                  touchPosition(const ITouch::SDownEvent& event) const;
     Vector2D                                                  touchPosition(const ITouch::SMotionEvent& event) const;
-    void                                                      armDrag(const Vector2D& position, bool touch, int touchID);
+    bool                                                      armDrag(const Vector2D& position, bool touch, int touchID);
     void                                                      updateDrag(Event::SCallbackInfo& info, const Vector2D& position, bool touch, int touchID);
     void                                                      finishDrag(Event::SCallbackInfo& info, bool touch, int touchID);
 

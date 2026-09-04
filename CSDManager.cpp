@@ -12,6 +12,7 @@
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/config/supplementary/executor/Executor.hpp>
+#include <hyprland/src/config/shared/actions/ConfigActions.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
 #include <hyprland/src/xwayland/XSurface.hpp>
 
@@ -24,6 +25,8 @@
 #undef private
 
 #include <linux/input-event-codes.h>
+
+#include <format>
 
 namespace {
     PHLMONITOR monitorForTouch(const SP<ITouch>& device) {
@@ -142,8 +145,12 @@ CCSDManager::CCSDManager() {
 }
 
 CCSDManager::~CCSDManager() {
-    if (m_dragging && g_layoutManager->dragController()->target())
+    if (m_dragging && !m_touchDrag && g_layoutManager->dragController()->target())
         g_layoutManager->endDragTarget();
+    if (m_pinnedForTouchDrag) {
+        if (const auto window = m_dragWindow.lock())
+            (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
+    }
 
     for (auto& [window, hooks] : m_windows) {
         if (hooks.ownsMaxSuppression)
@@ -174,8 +181,9 @@ void CCSDManager::unregisterWindow(Desktop::View::CWindow* window) {
     m_windows.erase(window);
     if (const auto dragging = m_dragWindow.lock(); dragging && dragging.get() == window) {
         m_dragWindow.reset();
-        m_dragPending = false;
-        m_dragging    = false;
+        m_dragPending        = false;
+        m_dragging           = false;
+        m_pinnedForTouchDrag = false;
     }
 }
 
@@ -273,17 +281,20 @@ Vector2D CCSDManager::touchPosition(const ITouch::SMotionEvent& event) const {
     return monitor->m_position + event.pos * monitor->m_size;
 }
 
-void CCSDManager::armDrag(const Vector2D& position, bool touch, int touchID) {
+bool CCSDManager::armDrag(const Vector2D& position, bool touch, int touchID) {
     const auto window = csdWindowAt(position);
     if (!window || !inDragRegion(window, position))
-        return;
+        return false;
 
-    m_dragWindow  = window;
-    m_dragOrigin  = position;
-    m_dragPending = true;
-    m_dragging    = false;
-    m_touchDrag   = touch;
-    m_touchID     = touchID;
+    m_dragWindow         = window;
+    m_dragOrigin         = position;
+    m_dragGrabOffset     = position - window->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+    m_dragPending        = true;
+    m_dragging           = false;
+    m_touchDrag          = touch;
+    m_touchID            = touchID;
+    m_pinnedForTouchDrag = false;
+    return true;
 }
 
 void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& position, bool touch, int touchID) {
@@ -298,6 +309,28 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
 
     if ((position - m_dragOrigin).size() < g_pGlobalState->config.csdDragThreshold->value())
         return;
+
+    if (touch) {
+        if (!m_dragging) {
+            if (Desktop::focusState()->window() != window)
+                Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
+            if (window->m_isFloating)
+                Desktop::windowState()->raise(window);
+            else
+                (void)Config::Actions::floatWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_ENABLE, window);
+
+            if (!window->m_pinned) {
+                (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_ENABLE, window);
+                m_pinnedForTouchDrag = true;
+            }
+            m_dragging = true;
+        }
+
+        const auto target = position - m_dragGrabOffset;
+        HyprlandAPI::invokeHyprctlCommand("dispatch", std::format("movewindowpixel exact {} {},activewindow", static_cast<int>(target.x), static_cast<int>(target.y)));
+        info.cancelled = true;
+        return;
+    }
 
     if (m_dragging)
         return;
@@ -322,15 +355,23 @@ void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID
         return;
 
     if (m_dragging) {
-        if (g_layoutManager->dragController()->target())
+        if (touch) {
+            if (m_pinnedForTouchDrag) {
+                if (const auto window = m_dragWindow.lock())
+                    (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
+            }
+        } else if (g_layoutManager->dragController()->target())
             g_layoutManager->endDragTarget();
-        info.cancelled = true;
     }
 
+    if (touch || m_dragging)
+        info.cancelled = true;
+
     m_dragWindow.reset();
-    m_dragPending = false;
-    m_dragging    = false;
-    m_touchID     = -1;
+    m_dragPending        = false;
+    m_dragging           = false;
+    m_pinnedForTouchDrag = false;
+    m_touchID            = -1;
     m_touchMonitor.reset();
 }
 
@@ -347,11 +388,28 @@ void CCSDManager::onMouseMove(const Vector2D&, Event::SCallbackInfo& info) {
     updateDrag(info, g_pInputManager->getMouseCoordsInternal(), false, 0);
 }
 
-void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo&) {
-    if (event.touchID != 0)
+void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo& info) {
+    // Wayland touch IDs are arbitrary and may keep increasing in a nested
+    // compositor. The first finger armed over this titlebar owns the drag.
+    if (m_dragPending)
         return;
+
     m_touchMonitor = monitorForTouch(event.device);
-    armDrag(touchPosition(event), true, event.touchID);
+    if (!armDrag(touchPosition(event), true, event.touchID)) {
+        m_touchMonitor.reset();
+        return;
+    }
+
+    if (const auto window = m_dragWindow.lock()) {
+        if (Desktop::focusState()->window() != window)
+            Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
+        if (window->m_isFloating)
+            Desktop::windowState()->raise(window);
+    }
+
+    // Control areas are excluded by inDragRegion, so it is safe to claim this
+    // touch immediately instead of letting Qt/Chromium retain the gesture.
+    info.cancelled = true;
 }
 
 void CCSDManager::onTouchMove(ITouch::SMotionEvent event, Event::SCallbackInfo& info) {

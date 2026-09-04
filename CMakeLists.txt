@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.27)
 
 project(hyprtouchbar
     DESCRIPTION "Modern touch-friendly titlebars for Hyprland"
-    VERSION 1.1.0
+    VERSION 1.1.1
 )
 
 set(CMAKE_CXX_STANDARD 23)

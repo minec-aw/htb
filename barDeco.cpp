@@ -151,8 +151,29 @@ void CHyprBar::onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent 
 }
 
 void CHyprBar::onTouchDown(Event::SCallbackInfo& info, ITouch::SDownEvent e) {
-    // Don't do anything if you're already grabbed a window with another finger
-    if (!inputIsValid() || e.touchID != 0)
+    // Touch IDs are not guaranteed to start at zero (notably under nested
+    // compositors). Track whichever finger starts the drag instead. Do not use
+    // inputIsValid() here: it intentionally checks mouse coordinates, which
+    // made touch dragging depend on where the mouse cursor happened to be.
+    if (!g_pGlobalState->config.enabled->value() || shouldHide() || m_bDragPending || m_bDraggingThis)
+        return;
+    if (g_pSeatManager->m_seatGrab && !g_pSeatManager->m_seatGrab->accepts(m_pWindow->wlSurface()->resource()))
+        return;
+
+    PHLMONITOR monitor = nullptr;
+    for (const auto& candidate : State::monitorState()->monitors()) {
+        if (candidate->m_name == (!e.device->m_boundOutput.empty() ? e.device->m_boundOutput : "")) {
+            monitor = candidate;
+            break;
+        }
+    }
+    monitor = monitor ? monitor : Desktop::focusState()->monitor();
+    if (!monitor)
+        return;
+
+    const auto touch = monitor->m_position + e.pos * monitor->m_size;
+    const auto box   = assignedBoxGlobal();
+    if (!VECINRECT(touch, box.x, box.y, box.x + box.w, box.y + box.h))
         return;
 
     handleDownEvent(info, e);
@@ -169,7 +190,7 @@ void CHyprBar::onMouseMove(Vector2D coords) {
     // Hardware cursors do not damage the titlebar, so explicitly redraw hover states.
     damageOnButtonHover();
 
-    if (!m_bDragPending || m_bTouchEv || !validMapped(m_pWindow) || m_touchId != 0)
+    if (!m_bDragPending || m_bTouchEv || !validMapped(m_pWindow))
         return;
 
     m_bDragPending = false;
