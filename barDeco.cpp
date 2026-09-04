@@ -183,15 +183,28 @@ void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
     PMONITOR          = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
     const auto COORDS = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y);
 
+    if ((COORDS - m_touchDownPosition).size() < g_pGlobalState->config.csdDragThreshold->value())
+        return;
+
+    const auto PWINDOW = m_pWindow.lock();
     if (!m_bDraggingThis) {
-        // Initial setup for dragging a window.
-        g_pKeybindManager->m_dispatchers["setfloating"]("activewindow");
-        g_pKeybindManager->m_dispatchers["resizewindowpixel"]("exact 50% 50%,activewindow");
-        // pin it so you can change workspaces while dragging a window
-        g_pKeybindManager->m_dispatchers["pin"]("activewindow");
+        // `setfloating` is idempotent. Unlike the old implementation, do not
+        // resize an already-floating window and never tile it on release.
+        if (!PWINDOW->m_isFloating)
+            g_pKeybindManager->m_dispatchers["setfloating"]("activewindow");
+
+        // Temporarily pin while dragging across workspaces, then restore the
+        // original pin state when the finger is released.
+        if (!PWINDOW->m_pinned) {
+            (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_ENABLE, PWINDOW);
+            m_bPinnedForTouchDrag = true;
+        }
     }
-    g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", (int)(COORDS.x - (assignedBoxGlobal().w / 2)), (int)COORDS.y));
+
+    const auto TARGET = COORDS - m_touchGrabOffset;
+    g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", (int)TARGET.x, (int)TARGET.y));
     m_bDraggingThis = true;
+    info.cancelled  = true;
 }
 
 void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch::SDownEvent> touchEvent) {
@@ -211,8 +224,11 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
                 break;
             }
         }
-        PMONITOR = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
-        COORDS   = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y) - assignedBoxGlobal().pos();
+        PMONITOR              = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
+        m_touchDownPosition   = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y);
+        m_touchGrabOffset     = m_touchDownPosition - PWINDOW->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        m_bPinnedForTouchDrag = false;
+        COORDS                = m_touchDownPosition - assignedBoxGlobal().pos();
     }
 
     const auto HEIGHT           = g_pGlobalState->config.barHeight->value();
@@ -226,8 +242,9 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     if (!VECINRECT(COORDS, 0, 0, assignedBoxGlobal().w, HEIGHT - 1)) {
 
         if (m_bDraggingThis) {
-            if (m_bTouchEv)
-                g_pKeybindManager->m_dispatchers["settiled"]("activewindow");
+            if (m_bPinnedForTouchDrag)
+                (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, PWINDOW);
+            m_bPinnedForTouchDrag = false;
             g_pKeybindManager->m_dispatchers["mouse"]("0movewindow");
             Log::logger->log(Log::DEBUG, "[hyprtouchbar] Dragging ended on {:x}", (uintptr_t)PWINDOW.get());
         }
@@ -261,7 +278,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 }
 
 void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
-    if (m_pWindow.lock() != Desktop::focusState()->window())
+    if (m_pWindow.lock() != Desktop::focusState()->window() && !m_bDraggingThis)
         return;
 
     if (m_bCancelledDown)
@@ -272,8 +289,9 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
     if (m_bDraggingThis) {
         g_pKeybindManager->changeMouseBindMode(MBIND_INVALID);
         m_bDraggingThis = false;
-        if (m_bTouchEv)
-            (void)Config::Actions::floatWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE);
+        if (m_bPinnedForTouchDrag)
+            (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, m_pWindow.lock());
+        m_bPinnedForTouchDrag = false;
 
         Log::logger->log(Log::DEBUG, "[hyprtouchbar] Dragging ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }
