@@ -5,7 +5,7 @@ A modern, touch-friendly fork of Hyprland's official **hyprbars** plugin.
 It adds server-side titlebars only when an application does not already have client-side decorations (CSD), while also filling the common CSD gaps in Hyprland:
 
 - protocol-based CSD detection (no application-name blacklist)
-- compositor-side mouse and touchscreen dragging fallback for CSD titlebars
+- protocol-driven touchscreen dragging using each application's exact CSD draggable regions
 - working CSD minimize requests with a configurable Hyprland dispatcher action
 - native CSD maximize behavior, or an optional configurable override
 - application icons resolved from desktop files and freedesktop icon themes
@@ -13,7 +13,7 @@ It adds server-side titlebars only when an application does not already have cli
 - translucent active/inactive colors, blur, rounded hover states, and modern defaults
 - per-window rules to fix applications that report their decoration mode incorrectly
 
-The titlebar renderer is derived from `hyprwm/hyprland-plugins` (`hyprbars`, compatibility commit `7644cecdb947060682891a0db2a0cdc5c0b9e704`). This fork retains its BSD-3-Clause license.
+The titlebar renderer is derived from `hyprwm/hyprland-plugins` (`hyprbars`, compatibility commit `7644cecdb947060682891a0db2a0cdc5c0b9e704`). The protocol-driven touch-move approach was inspired by [`khalid151/csd-titlebar-move`](https://github.com/khalid151/csd-titlebar-move), with additional serial validation, touch tracking, and clean handler restoration. This fork retains hyprbars' BSD-3-Clause license.
 
 ## Compatibility
 
@@ -75,6 +75,9 @@ plugin:hyprtouchbar {
     # CSD handling
     csd_detection = auto
     csd_drag_enabled = true
+
+    # Optional legacy approximation; normally leave disabled
+    csd_drag_fallback = false
     csd_titlebar_height = 48
     csd_controls_left = 0
     csd_controls_right = 150
@@ -140,9 +143,11 @@ Other dynamic rule effects are `hyprtouchbar:bar_color` and `hyprtouchbar:title_
 
 ## CSD dragging notes
 
-Wayland does not expose a semantic “titlebar rectangle” to the compositor. The fallback therefore treats a configurable strip at the top of detected CSD windows as draggable, excluding control areas on the left and right. Buttons in those excluded areas continue receiving normal client input.
+The default path does **not** place an input strip over the application. The client receives touch normally and decides whether the touched pixel is draggable by sending `xdg_toplevel.move`. Hyprtouchbar accepts the valid touch serial and takes over only after that request. This preserves Chromium tab dragging, tab detaching, navigation buttons, and other toolbar controls while allowing empty titlebar regions to move the window.
 
-For apps with left-side controls, increase `csd_controls_left`. If an app has tabs or toolbar widgets in the top strip, reduce `csd_titlebar_height`, add a `force_ssd` rule, or disable the fallback with `csd_drag_enabled = false`. Native toolkit `xdg_toplevel.move` requests continue to work when the fallback is disabled.
+Hyprland 0.56 accepts pointer-button serials for this request but rejects touch-down serials; the plugin augments that validation without disabling native pointer validation. Hyprland's original request handlers are restored when the plugin unloads.
+
+`csd_drag_fallback = true` enables the older approximate strip for clients that never send `xdg_toplevel.move`. Only in that mode do `csd_titlebar_height`, `csd_controls_left`, and `csd_controls_right` apply. The fallback sends `wl_touch.cancel` when it takes over, but it can still conflict with tab/tool-bar gestures, so it is disabled by default.
 
 ## Lua custom buttons
 

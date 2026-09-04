@@ -6,7 +6,10 @@
 #include <hyprland/src/devices/IPointer.hpp>
 #include <hyprland/src/devices/ITouch.hpp>
 
+#include <functional>
 #include <unordered_map>
+
+class CXdgToplevel;
 
 namespace Event {
     struct SCallbackInfo;
@@ -19,13 +22,17 @@ class CCSDManager {
 
     void registerWindow(const PHLWINDOW& window);
     void refresh();
+    bool beginProtocolTouchMove(const PHLWINDOW& window);
 
   private:
     struct SWindowHooks {
-        CHyprSignalListener stateChanged;
-        bool                listening            = false;
-        bool                maxSuppressionWanted = false;
-        bool                ownsMaxSuppression   = false;
+        CHyprSignalListener                                        stateChanged;
+        SP<CXdgToplevel>                                           xdgResource;
+        std::function<void(CXdgToplevel*, wl_resource*, uint32_t)> originalMove;
+        bool                                                       moveOverridden       = false;
+        bool                                                       listening            = false;
+        bool                                                       maxSuppressionWanted = false;
+        bool                                                       ownsMaxSuppression   = false;
     };
 
     std::unordered_map<Desktop::View::CWindow*, SWindowHooks> m_windows;
@@ -46,7 +53,9 @@ class CCSDManager {
     int                                                       m_touchID     = -1;
     PHLMONITORREF                                             m_touchMonitor;
     Vector2D                                                  m_dragGrabOffset;
-    bool                                                      m_pinnedForTouchDrag = false;
+    bool                                                      m_pinnedForTouchDrag   = false;
+    bool                                                      m_touchActive          = false;
+    bool                                                      m_clientTouchCancelled = false;
 
     void                                                      unregisterWindow(Desktop::View::CWindow* window);
     void                                                      applySuppression(const PHLWINDOW& window);

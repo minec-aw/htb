@@ -182,7 +182,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(appIconTheme, CStringValue, "app_icon_theme", "Freedesktop icon theme name", "hicolor");
     ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "Shell command run on titlebar double click", "hyprctl dispatch fullscreenstate 1 2");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
-    ADD_CONFIG(csdDragEnabled, CBoolValue, "csd_drag_enabled", "Enable compositor-side CSD dragging fallback", true);
+    ADD_CONFIG(csdDragEnabled, CBoolValue, "csd_drag_enabled", "Honor application-defined CSD move requests from touch", true);
+    ADD_CONFIG(csdDragFallback, CBoolValue, "csd_drag_fallback", "Enable the approximate top-strip fallback", false);
     ADD_CONFIG(csdTitlebarHeight, CIntValue, "csd_titlebar_height", "CSD draggable top region height", 48);
     ADD_CONFIG(csdControlsLeft, CIntValue, "csd_controls_left", "Non-draggable CSD control width on the left", 0);
     ADD_CONFIG(csdControlsRight, CIntValue, "csd_controls_right", "Non-draggable CSD control width on the right", 150);
@@ -205,7 +206,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.1.1"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.2.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
