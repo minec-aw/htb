@@ -74,6 +74,9 @@ plugin:hyprtouchbar {
     # Helium Linux-style caption controls
     bar_buttons_alignment = right
     icon_on_hover = false
+    button_icon_theme = Adwaita
+    button_icon_size = 20
+    button_icon_color = rgb(e8eaed)
     button_hover_color = rgba(ffffff33)
     close_hover_color = rgb(e5484d)
 
@@ -95,6 +98,8 @@ plugin:hyprtouchbar {
     close_action =
 }
 ```
+
+The built-in controls load the same freedesktop symbolic icon names Chromium/Helium requests on Linux: `window-minimize-symbolic`, `window-maximize-symbolic`, `window-restore-symbolic`, and `window-close-symbolic`. The maximize glyph automatically changes to restore while maximized. Text glyphs are used only if the selected icon theme does not provide these assets.
 
 `maximize_action` being empty preserves Hyprland's native maximize/unmaximize response to a CSD button. Setting it suppresses native maximize and dispatches your action instead. `close_action` behaves similarly for the plugin's server-side close button.
 

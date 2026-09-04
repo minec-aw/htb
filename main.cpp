@@ -161,6 +161,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(inactiveButtonColor, CColorValue, "inactive_button_color", "Inactive button color; transparent means disabled", 0x00000000);
     ADD_CONFIG(buttonHoverColor, CColorValue, "button_hover_color", "Button hover background", 0x33ffffff);
     ADD_CONFIG(closeHoverColor, CColorValue, "close_hover_color", "Close button hover background", 0xffe5484d);
+    ADD_CONFIG(buttonIconColor, CColorValue, "button_icon_color", "Linux caption icon color", 0xffe8eaed);
     ADD_CONFIG(barHeight, CIntValue, "bar_height", "Titlebar height", 42);
     ADD_CONFIG(barTextSize, CIntValue, "bar_text_size", "Title text size", 13);
     ADD_CONFIG(barTextWeight, CFontWeightValue, "bar_text_weight", "Title font weight", 500);
@@ -168,6 +169,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(barButtonPadding, CIntValue, "bar_button_padding", "Space between titlebar buttons", 6);
     ADD_CONFIG(cornerRadius, CIntValue, "corner_radius", "Button corner radius", 6);
     ADD_CONFIG(appIconSize, CIntValue, "app_icon_size", "Application icon size", 24);
+    ADD_CONFIG(buttonIconSize, CIntValue, "button_icon_size", "Linux caption icon size", 20);
     ADD_CONFIG(barTitleEnabled, CBoolValue, "bar_title_enabled", "Show the window title", true);
     ADD_CONFIG(barBlur, CBoolValue, "bar_blur", "Blur translucent titlebars", true);
     ADD_CONFIG(barPartOfWindow, CBoolValue, "bar_part_of_window", "Reserve titlebar space", true);
@@ -183,6 +185,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(barTextAlign, CStringValue, "bar_text_align", "Title alignment: left or center", "left");
     ADD_CONFIG(barButtonsAlignment, CStringValue, "bar_buttons_alignment", "Button alignment: left or right", "right");
     ADD_CONFIG(appIconTheme, CStringValue, "app_icon_theme", "Freedesktop icon theme name", "hicolor");
+    ADD_CONFIG(buttonIconTheme, CStringValue, "button_icon_theme", "Icon theme for Linux caption controls", "Adwaita");
     ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "Shell command run on titlebar double click", "hyprctl dispatch fullscreenstate 1 2");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
     ADD_CONFIG(csdDragEnabled, CBoolValue, "csd_drag_enabled", "Enable touch interaction with CSD titlebars", true);
@@ -210,7 +213,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.1"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.2"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

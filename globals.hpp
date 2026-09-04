@@ -43,18 +43,18 @@ struct SGlobalState {
     uint32_t                  forceSSDRuleIdx   = 0;
 
     struct {
-        SP<Config::Values::CColorValue>      barColor, inactiveBarColor, textColor, inactiveButtonColor, buttonHoverColor, closeHoverColor;
+        SP<Config::Values::CColorValue>      barColor, inactiveBarColor, textColor, inactiveButtonColor, buttonHoverColor, closeHoverColor, buttonIconColor;
         SP<Config::Values::CIntValue>        barHeight;
         SP<Config::Values::CIntValue>        barTextSize;
         SP<Config::Values::CFontWeightValue> barTextWeight;
         SP<Config::Values::CIntValue>        barPadding;
         SP<Config::Values::CIntValue>        barButtonPadding;
         SP<Config::Values::CIntValue>        cornerRadius;
-        SP<Config::Values::CIntValue>        appIconSize;
+        SP<Config::Values::CIntValue>        appIconSize, buttonIconSize;
         SP<Config::Values::CIntValue>        csdTitlebarHeight, csdControlsLeft, csdControlsRight, csdDragThreshold;
         SP<Config::Values::CBoolValue>       barBlur, barTitleEnabled, barPartOfWindow, barPrecedenceOverBorder, enabled, iconOnHover;
         SP<Config::Values::CBoolValue>       builtinButtons, showClose, showMaximize, showMinimize, showAppIcon, csdDragEnabled, csdTouchEmulation, csdDragFallback;
-        SP<Config::Values::CStringValue>     barTextFont, barTextAlign, barButtonsAlignment, appIconTheme, onDoubleClick;
+        SP<Config::Values::CStringValue>     barTextFont, barTextAlign, barButtonsAlignment, appIconTheme, buttonIconTheme, onDoubleClick;
         SP<Config::Values::CStringValue>     csdDetection, minimizeAction, maximizeAction, closeAction;
     } config;
 };

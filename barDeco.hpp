@@ -62,6 +62,7 @@ class CHyprBar : public IHyprWindowDecoration {
 
     SP<Render::ITexture>      m_pTextTex;
     SP<Render::ITexture>      m_pAppIconTex;
+    SP<Render::ITexture>      m_pCloseIconTex, m_pMinimizeIconTex, m_pMaximizeIconTex, m_pRestoreIconTex;
 
     bool                      m_bWindowSizeChanged = false;
     bool                      m_hidden             = false;
@@ -81,6 +82,7 @@ class CHyprBar : public IHyprWindowDecoration {
     void                      renderPass(PHLMONITOR, float const& a);
     void                      renderBarTitle(const Vector2D& bufferSize, const float scale);
     void                      updateAppIcon(const float scale);
+    SP<Render::ITexture>      builtinButtonIcon(eTouchbarButtonAction action, const float scale);
     void                      renderBarButtons(CBox* barBox, const float scale, const float a);
     void                      renderBarButtonsText(CBox* barBox, const float scale, const float a);
     void                      damageOnButtonHover();
@@ -111,7 +113,10 @@ class CHyprBar : public IHyprWindowDecoration {
     std::string               m_szLastTitle;
     std::string               m_szLastIconClass;
     std::string               m_szLastIconTheme;
-    int                       m_iLastIconSize = 0;
+    int                       m_iLastIconSize        = 0;
+    int                       m_iLastButtonIconSize  = 0;
+    Config::INTEGER           m_iLastButtonIconColor = 0;
+    std::string               m_szLastButtonIconTheme;
 
     bool                      m_bDraggingThis  = false;
     bool                      m_bTouchEv       = false;

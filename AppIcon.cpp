@@ -288,3 +288,28 @@ SP<Render::ITexture> AppIcon::load(const std::string& appClass, const std::strin
     cairo_surface_destroy(surface);
     return texture;
 }
+
+SP<Render::ITexture> AppIcon::loadNamed(const std::string& iconName, const std::string& theme, int pixelSize, const CHyprColor& tint) {
+    if (iconName.empty() || pixelSize < 1)
+        return nullptr;
+
+    const auto path = iconPath(iconName, theme, pixelSize);
+    if (!path)
+        return nullptr;
+
+    cairo_surface_t* surface = lower(path->extension().string()) == ".svg" ? renderSVG(*path, pixelSize) : renderPNG(*path, pixelSize);
+    if (!surface)
+        return nullptr;
+
+    // Symbolic icons carry only an alpha mask. Chromium asks GTK to recolor
+    // that mask for the current title-button state; do the same here.
+    cairo_t* cairo = cairo_create(surface);
+    cairo_set_operator(cairo, CAIRO_OPERATOR_IN);
+    cairo_set_source_rgba(cairo, tint.r, tint.g, tint.b, tint.a);
+    cairo_paint(cairo);
+    cairo_destroy(cairo);
+
+    auto texture = g_pHyprRenderer->createTexture(surface);
+    cairo_surface_destroy(surface);
+    return texture;
+}

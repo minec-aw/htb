@@ -10,6 +10,7 @@
 #include <hyprland/src/helpers/MiscFunctions.hpp>
 #include <hyprland/src/managers/SeatManager.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/config/ConfigManager.hpp>
 #include <hyprland/src/config/shared/animation/AnimationTree.hpp>
@@ -405,6 +406,32 @@ void CHyprBar::updateAppIcon(const float scale) {
     m_pTextTex        = nullptr;
 }
 
+SP<Render::ITexture> CHyprBar::builtinButtonIcon(eTouchbarButtonAction action, const float scale) {
+    const auto THEME     = g_pGlobalState->config.buttonIconTheme->value();
+    const auto COLOR     = g_pGlobalState->config.buttonIconColor->value();
+    const int  PIXELSIZE = std::max(1, static_cast<int>(std::round(g_pGlobalState->config.buttonIconSize->value() * scale)));
+
+    if (THEME != m_szLastButtonIconTheme || COLOR != m_iLastButtonIconColor || PIXELSIZE != m_iLastButtonIconSize) {
+        m_szLastButtonIconTheme = THEME;
+        m_iLastButtonIconColor  = COLOR;
+        m_iLastButtonIconSize   = PIXELSIZE;
+
+        const auto tint    = configColor(COLOR);
+        m_pCloseIconTex    = AppIcon::loadNamed("window-close-symbolic", THEME, PIXELSIZE, tint);
+        m_pMinimizeIconTex = AppIcon::loadNamed("window-minimize-symbolic", THEME, PIXELSIZE, tint);
+        m_pMaximizeIconTex = AppIcon::loadNamed("window-maximize-symbolic", THEME, PIXELSIZE, tint);
+        m_pRestoreIconTex  = AppIcon::loadNamed("window-restore-symbolic", THEME, PIXELSIZE, tint);
+    }
+
+    switch (action) {
+        case eTouchbarButtonAction::CLOSE: return m_pCloseIconTex;
+        case eTouchbarButtonAction::MINIMIZE: return m_pMinimizeIconTex;
+        case eTouchbarButtonAction::MAXIMIZE:
+            return Fullscreen::controller()->getFullscreenModes(m_pWindow.lock()).client == Fullscreen::FSMODE_MAXIMIZED ? m_pRestoreIconTex : m_pMaximizeIconTex;
+        default: return nullptr;
+    }
+}
+
 size_t CHyprBar::getVisibleButtonCount(Config::INTEGER barButtonPadding, Config::INTEGER barPadding, const Vector2D& bufferSize, const float scale) {
     float  availableSpace = bufferSize.x - barPadding * scale * 2 - (m_pAppIconTex ? (g_pGlobalState->config.appIconSize->value() + 6) * scale : 0);
     size_t count          = 0;
@@ -497,22 +524,27 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         bool       hovering   = VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + button.size + BARBUTTONPADDING, currentPos.y + button.size);
         noScaleOffset += BARBUTTONPADDING + button.size;
 
-        if ((!button.iconTex || button.iconTex->m_texID == 0) && !button.icon.empty()) {
-            // render icon
-            auto fgcol = button.userfg ? button.fgcol : (button.bgcol.r + button.bgcol.g + button.bgcol.b < 1) ? CHyprColor(0xFFFFFFFF) : CHyprColor(0xFF000000);
+        SP<Render::ITexture> iconTex;
+        if (button.action != eTouchbarButtonAction::CUSTOM)
+            iconTex = builtinButtonIcon(button.action, scale);
 
+        // Text remains a fallback for custom buttons and icon themes that do
+        // not provide Chromium's standard Linux symbolic icon names.
+        if (!iconTex && (!button.iconTex || button.iconTex->m_texID == 0) && !button.icon.empty()) {
+            auto fgcol     = button.userfg ? button.fgcol : (button.bgcol.r + button.bgcol.g + button.bgcol.b < 1) ? CHyprColor(0xFFFFFFFF) : CHyprColor(0xFF000000);
             button.iconTex = g_pHyprRenderer->renderText(button.icon, fgcol, std::round(button.size * 0.62 * scale), false, "sans", scaledButtonSize);
         }
-
-        if (!button.iconTex || button.iconTex->m_texID == 0)
+        if (!iconTex)
+            iconTex = button.iconTex;
+        if (!iconTex || iconTex->m_texID == 0)
             continue;
 
-        const auto iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - button.iconTex->m_size.x / 2.0;
-        const auto iconY = barBox->y + barBox->height / 2.0 - button.iconTex->m_size.y / 2.0;
-        CBox       pos   = {iconX, iconY, button.iconTex->m_size.x, button.iconTex->m_size.y};
+        const auto iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - iconTex->m_size.x / 2.0;
+        const auto iconY = barBox->y + barBox->height / 2.0 - iconTex->m_size.y / 2.0;
+        CBox       pos   = {iconX, iconY, iconTex->m_size.x, iconTex->m_size.y};
 
         if (!ICONONHOVER || hovering)
-            g_pHyprOpenGL->renderTexture(button.iconTex, pos, {.a = a});
+            g_pHyprOpenGL->renderTexture(iconTex, pos, {.a = a});
         offset += scaledButtonsPad + scaledButtonSize;
 
         bool currentBit = (m_iButtonHoverState & (1 << i)) != 0;
@@ -711,7 +743,12 @@ void CHyprBar::onConfigReloaded() {
     m_bTitleColorChanged = true;
     m_pTextTex           = nullptr;
     m_pAppIconTex        = nullptr;
+    m_pCloseIconTex      = nullptr;
+    m_pMinimizeIconTex   = nullptr;
+    m_pMaximizeIconTex   = nullptr;
+    m_pRestoreIconTex    = nullptr;
     m_szLastIconClass.clear();
+    m_szLastButtonIconTheme.clear();
 
     g_pDecorationPositioner->repositionDeco(this);
     damageEntire();
