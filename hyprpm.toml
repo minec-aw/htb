@@ -1,0 +1,11 @@
+[repository]
+name = "hyprtouchbar"
+authors = ["hyprtouchbar contributors"]
+
+[hyprtouchbar]
+description = "Modern touch-friendly, CSD-aware titlebars for Hyprland"
+authors = ["hyprtouchbar contributors"]
+output = "hyprtouchbar.so"
+build = [
+    "make all",
+]
