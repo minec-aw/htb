@@ -445,17 +445,9 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a) 
 
         auto       color    = button.bgcol;
         const bool hovering = (m_iButtonHoverState & (1U << i)) != 0;
-        if (hovering) {
-            if (button.action == eTouchbarButtonAction::CUSTOM)
-                color = configColor(g_pGlobalState->config.buttonHoverColor->value());
-            else {
-                // Preserve each traffic light's identity and add a subtle
-                // pressed/hover depth instead of replacing it with one color.
-                color.r *= 0.88F;
-                color.g *= 0.88F;
-                color.b *= 0.88F;
-            }
-        }
+        if (hovering)
+            color = button.action == eTouchbarButtonAction::CLOSE ? configColor(g_pGlobalState->config.closeHoverColor->value()) :
+                                                                    configColor(g_pGlobalState->config.buttonHoverColor->value());
 
         if (INACTIVECOLOR > 0 && !hovering) {
             color = m_bWindowHasFocus ? color : configColor(INACTIVECOLOR);

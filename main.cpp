@@ -30,16 +30,16 @@ static void addBuiltinButtons() {
     if (!g_pGlobalState->config.builtinButtons->value())
         return;
 
-    // Helium/macOS-style traffic lights: close, minimize, maximize from left
-    // to right. Glyphs appear only on hover by default, while the full bar
-    // height remains available as a touch target.
-    constexpr auto GLYPH = 0xff3b3b3b;
+    // Helium's Linux controls are monochrome caption glyphs on the right.
+    // The renderer places the first button nearest that edge, producing the
+    // visible order minimize, maximize, close from left to right.
+    constexpr auto GLYPH = 0xffe8eaed;
     g_pGlobalState->buttons.push_back(
-        SHyprButton{.userfg = true, .fgcol = CHyprColor(GLYPH), .bgcol = CHyprColor(0xffff5f57), .size = 20, .icon = "×", .action = eTouchbarButtonAction::CLOSE});
+        SHyprButton{.userfg = true, .fgcol = CHyprColor(GLYPH), .bgcol = CHyprColor(0x00000000), .size = 30, .icon = "×", .action = eTouchbarButtonAction::CLOSE});
     g_pGlobalState->buttons.push_back(
-        SHyprButton{.userfg = true, .fgcol = CHyprColor(GLYPH), .bgcol = CHyprColor(0xffffbd2e), .size = 20, .icon = "−", .action = eTouchbarButtonAction::MINIMIZE});
+        SHyprButton{.userfg = true, .fgcol = CHyprColor(GLYPH), .bgcol = CHyprColor(0x00000000), .size = 30, .icon = "□", .action = eTouchbarButtonAction::MAXIMIZE});
     g_pGlobalState->buttons.push_back(
-        SHyprButton{.userfg = true, .fgcol = CHyprColor(GLYPH), .bgcol = CHyprColor(0xff28c840), .size = 20, .icon = "+", .action = eTouchbarButtonAction::MAXIMIZE});
+        SHyprButton{.userfg = true, .fgcol = CHyprColor(GLYPH), .bgcol = CHyprColor(0x00000000), .size = 30, .icon = "−", .action = eTouchbarButtonAction::MINIMIZE});
 }
 
 static void onNewWindow(PHLWINDOW window) {
@@ -161,19 +161,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(inactiveButtonColor, CColorValue, "inactive_button_color", "Inactive button color; transparent means disabled", 0x00000000);
     ADD_CONFIG(buttonHoverColor, CColorValue, "button_hover_color", "Button hover background", 0x33ffffff);
     ADD_CONFIG(closeHoverColor, CColorValue, "close_hover_color", "Close button hover background", 0xffe5484d);
-    ADD_CONFIG(barHeight, CIntValue, "bar_height", "Titlebar height", 46);
+    ADD_CONFIG(barHeight, CIntValue, "bar_height", "Titlebar height", 42);
     ADD_CONFIG(barTextSize, CIntValue, "bar_text_size", "Title text size", 13);
     ADD_CONFIG(barTextWeight, CFontWeightValue, "bar_text_weight", "Title font weight", 500);
-    ADD_CONFIG(barPadding, CIntValue, "bar_padding", "Outer titlebar padding", 14);
-    ADD_CONFIG(barButtonPadding, CIntValue, "bar_button_padding", "Space between titlebar buttons", 12);
-    ADD_CONFIG(cornerRadius, CIntValue, "corner_radius", "Button corner radius", 10);
+    ADD_CONFIG(barPadding, CIntValue, "bar_padding", "Outer titlebar padding", 8);
+    ADD_CONFIG(barButtonPadding, CIntValue, "bar_button_padding", "Space between titlebar buttons", 6);
+    ADD_CONFIG(cornerRadius, CIntValue, "corner_radius", "Button corner radius", 6);
     ADD_CONFIG(appIconSize, CIntValue, "app_icon_size", "Application icon size", 24);
     ADD_CONFIG(barTitleEnabled, CBoolValue, "bar_title_enabled", "Show the window title", true);
     ADD_CONFIG(barBlur, CBoolValue, "bar_blur", "Blur translucent titlebars", true);
     ADD_CONFIG(barPartOfWindow, CBoolValue, "bar_part_of_window", "Reserve titlebar space", true);
     ADD_CONFIG(barPrecedenceOverBorder, CBoolValue, "bar_precedence_over_border", "Draw titlebar above border", false);
     ADD_CONFIG(enabled, CBoolValue, "enabled", "Enable server-side titlebars", true);
-    ADD_CONFIG(iconOnHover, CBoolValue, "icon_on_hover", "Only show button glyphs while hovered", true);
+    ADD_CONFIG(iconOnHover, CBoolValue, "icon_on_hover", "Only show button glyphs while hovered", false);
     ADD_CONFIG(builtinButtons, CBoolValue, "builtin_buttons", "Add built-in touch-friendly controls", true);
     ADD_CONFIG(showClose, CBoolValue, "show_close", "Show close button", true);
     ADD_CONFIG(showMaximize, CBoolValue, "show_maximize", "Show maximize button", true);
@@ -181,7 +181,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(showAppIcon, CBoolValue, "show_app_icon", "Show the application icon", true);
     ADD_CONFIG(barTextFont, CStringValue, "bar_text_font", "Title font", "Sans");
     ADD_CONFIG(barTextAlign, CStringValue, "bar_text_align", "Title alignment: left or center", "left");
-    ADD_CONFIG(barButtonsAlignment, CStringValue, "bar_buttons_alignment", "Button alignment: left or right", "left");
+    ADD_CONFIG(barButtonsAlignment, CStringValue, "bar_buttons_alignment", "Button alignment: left or right", "right");
     ADD_CONFIG(appIconTheme, CStringValue, "app_icon_theme", "Freedesktop icon theme name", "hicolor");
     ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "Shell command run on titlebar double click", "hyprctl dispatch fullscreenstate 1 2");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
@@ -210,7 +210,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.0"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.1"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
