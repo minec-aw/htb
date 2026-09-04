@@ -445,9 +445,17 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a) 
 
         auto       color    = button.bgcol;
         const bool hovering = (m_iButtonHoverState & (1U << i)) != 0;
-        if (hovering)
-            color = button.action == eTouchbarButtonAction::CLOSE ? configColor(g_pGlobalState->config.closeHoverColor->value()) :
-                                                                    configColor(g_pGlobalState->config.buttonHoverColor->value());
+        if (hovering) {
+            if (button.action == eTouchbarButtonAction::CUSTOM)
+                color = configColor(g_pGlobalState->config.buttonHoverColor->value());
+            else {
+                // Preserve each traffic light's identity and add a subtle
+                // pressed/hover depth instead of replacing it with one color.
+                color.r *= 0.88F;
+                color.g *= 0.88F;
+                color.b *= 0.88F;
+            }
+        }
 
         if (INACTIVECOLOR > 0 && !hovering) {
             color = m_bWindowHasFocus ? color : configColor(INACTIVECOLOR);
@@ -511,7 +519,7 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         const auto iconY = barBox->y + barBox->height / 2.0 - button.iconTex->m_size.y / 2.0;
         CBox       pos   = {iconX, iconY, button.iconTex->m_size.x, button.iconTex->m_size.y};
 
-        if (button.action != eTouchbarButtonAction::CUSTOM || !ICONONHOVER || hovering)
+        if (!ICONONHOVER || hovering)
             g_pHyprOpenGL->renderTexture(button.iconTex, pos, {.a = a});
         offset += scaledButtonsPad + scaledButtonSize;
 

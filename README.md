@@ -51,7 +51,7 @@ plugin:hyprtouchbar {
     enabled = true
 
     # Modern server-side bar
-    bar_height = 42
+    bar_height = 46
     bar_color = rgba(1c1c22e6)
     inactive_bar_color = rgba(16161bd9)
     col.text = rgb(f4f4f5)
@@ -59,7 +59,9 @@ plugin:hyprtouchbar {
     bar_text_weight = 500
     bar_text_align = left
     bar_blur = true
-    corner_radius = 7
+    bar_padding = 14
+    bar_button_padding = 12
+    corner_radius = 10
     show_app_icon = true
     app_icon_size = 24
     app_icon_theme = hicolor
@@ -69,8 +71,8 @@ plugin:hyprtouchbar {
     show_minimize = true
     show_maximize = true
     show_close = true
-    button_hover_color = rgba(ffffff33)
-    close_hover_color = rgb(e5484d)
+    bar_buttons_alignment = left
+    icon_on_hover = true
 
     # CSD handling
     csd_detection = auto
