@@ -164,6 +164,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(barPadding, CIntValue, "bar_padding", "Outer titlebar padding", 8);
     ADD_CONFIG(barButtonPadding, CIntValue, "bar_button_padding", "Space between titlebar buttons", 6);
     ADD_CONFIG(cornerRadius, CIntValue, "corner_radius", "Button corner radius", 7);
+    ADD_CONFIG(appIconSize, CIntValue, "app_icon_size", "Application icon size", 24);
     ADD_CONFIG(barTitleEnabled, CBoolValue, "bar_title_enabled", "Show the window title", true);
     ADD_CONFIG(barBlur, CBoolValue, "bar_blur", "Blur translucent titlebars", true);
     ADD_CONFIG(barPartOfWindow, CBoolValue, "bar_part_of_window", "Reserve titlebar space", true);
@@ -174,9 +175,11 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(showClose, CBoolValue, "show_close", "Show close button", true);
     ADD_CONFIG(showMaximize, CBoolValue, "show_maximize", "Show maximize button", true);
     ADD_CONFIG(showMinimize, CBoolValue, "show_minimize", "Show minimize button", true);
+    ADD_CONFIG(showAppIcon, CBoolValue, "show_app_icon", "Show the application icon", true);
     ADD_CONFIG(barTextFont, CStringValue, "bar_text_font", "Title font", "Sans");
     ADD_CONFIG(barTextAlign, CStringValue, "bar_text_align", "Title alignment: left or center", "left");
     ADD_CONFIG(barButtonsAlignment, CStringValue, "bar_buttons_alignment", "Button alignment: left or right", "right");
+    ADD_CONFIG(appIconTheme, CStringValue, "app_icon_theme", "Freedesktop icon theme name", "hicolor");
     ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "Shell command run on titlebar double click", "hyprctl dispatch fullscreenstate 1 2");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
     ADD_CONFIG(csdDragEnabled, CBoolValue, "csd_drag_enabled", "Enable compositor-side CSD dragging fallback", true);
@@ -202,7 +205,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.0.0"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.1.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

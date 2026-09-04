@@ -23,6 +23,7 @@ src = files(
   'barDeco.cpp',
   'BarPassElement.cpp',
   'CSDManager.cpp',
+  'AppIcon.cpp',
 )
 
 shared_module(meson.project_name(), src,
@@ -34,6 +35,7 @@ shared_module(meson.project_name(), src,
     dependency('libudev'),
     dependency('wayland-server'),
     dependency('xkbcommon'),
+    dependency('librsvg-2.0'),
   ],
   install: true,
 )

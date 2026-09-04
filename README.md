@@ -8,6 +8,7 @@ It adds server-side titlebars only when an application does not already have cli
 - compositor-side mouse and touchscreen dragging fallback for CSD titlebars
 - working CSD minimize requests with a configurable Hyprland dispatcher action
 - native CSD maximize behavior, or an optional configurable override
+- application icons resolved from desktop files and freedesktop icon themes
 - large built-in close, maximize, and minimize targets
 - translucent active/inactive colors, blur, rounded hover states, and modern defaults
 - per-window rules to fix applications that report their decoration mode incorrectly
@@ -19,6 +20,8 @@ The titlebar renderer is derived from `hyprwm/hyprland-plugins` (`hyprbars`, com
 Hyprland plugins are ABI-specific. Always rebuild after a Hyprland update. This revision was built and tested in a nested **Hyprland 0.56.2** session.
 
 ## Build and install
+
+The build requires the Hyprland development files plus Cairo and `librsvg`.
 
 ```bash
 make
@@ -57,6 +60,9 @@ plugin:hyprtouchbar {
     bar_text_align = left
     bar_blur = true
     corner_radius = 7
+    show_app_icon = true
+    app_icon_size = 24
+    app_icon_theme = hicolor
 
     # Built-in touch controls
     builtin_buttons = true

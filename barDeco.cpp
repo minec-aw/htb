@@ -24,6 +24,7 @@
 #include <hyprland/src/state/MonitorState.hpp>
 
 #include "globals.hpp"
+#include "AppIcon.hpp"
 #include "BarPassElement.hpp"
 
 #include <climits>
@@ -348,7 +349,8 @@ void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {
     const int  scaledSize        = std::round(SIZE * scale);
     const auto scaledButtonsSize = buttonSizes * scale;
     const auto scaledBarPadding  = BARPADDING * scale;
-    const int  paddingTotal      = scaledBarPadding * 2 + scaledButtonsSize + (ALIGN != "left" ? scaledButtonsSize : 0);
+    const auto scaledIconSpace   = m_pAppIconTex ? (g_pGlobalState->config.appIconSize->value() + 6) * scale : 0;
+    const int  paddingTotal      = scaledBarPadding * 2 + scaledButtonsSize + scaledIconSpace + (ALIGN != "left" ? scaledButtonsSize : 0);
     const int  maxWidth          = std::clamp(static_cast<int>(bufferSize.x - paddingTotal), 0, INT_MAX);
 
     if (m_szLastTitle.empty() || maxWidth < 1) {
@@ -360,8 +362,30 @@ void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {
     m_pTextTex             = g_pHyprRenderer->renderText(m_szLastTitle, COLOR, scaledSize, false, FONT, maxWidth, WEIGHT.m_value);
 }
 
+void CHyprBar::updateAppIcon(const float scale) {
+    if (!g_pGlobalState->config.showAppIcon->value()) {
+        if (m_pAppIconTex)
+            m_pTextTex = nullptr;
+        m_pAppIconTex = nullptr;
+        return;
+    }
+
+    const auto PWINDOW   = m_pWindow.lock();
+    const auto ICONCLASS = PWINDOW->m_class + "\n" + PWINDOW->m_initialClass;
+    const auto THEME     = g_pGlobalState->config.appIconTheme->value();
+    const int  PIXELSIZE = std::max(1, static_cast<int>(std::round(g_pGlobalState->config.appIconSize->value() * scale)));
+    if (ICONCLASS == m_szLastIconClass && THEME == m_szLastIconTheme && PIXELSIZE == m_iLastIconSize)
+        return;
+
+    m_szLastIconClass = ICONCLASS;
+    m_szLastIconTheme = THEME;
+    m_iLastIconSize   = PIXELSIZE;
+    m_pAppIconTex     = AppIcon::load(PWINDOW->m_class, PWINDOW->m_initialClass, THEME, PIXELSIZE);
+    m_pTextTex        = nullptr;
+}
+
 size_t CHyprBar::getVisibleButtonCount(Config::INTEGER barButtonPadding, Config::INTEGER barPadding, const Vector2D& bufferSize, const float scale) {
-    float  availableSpace = bufferSize.x - barPadding * scale * 2;
+    float  availableSpace = bufferSize.x - barPadding * scale * 2 - (m_pAppIconTex ? (g_pGlobalState->config.appIconSize->value() + 6) * scale : 0);
     size_t count          = 0;
 
     for (const auto& button : g_pGlobalState->buttons) {
@@ -588,6 +612,8 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
     else
         g_pHyprOpenGL->renderRect(titleBarBox, color, {.round = scaledRounding, .roundingPower = m_pWindow->roundingPower()});
 
+    updateAppIcon(pMonitor->m_scale);
+
     // render title
     if (ENABLETITLE && (m_szLastTitle != PWINDOW->m_title || m_bWindowSizeChanged || !m_pTextTex || m_pTextTex->m_texID == 0 || m_bTitleColorChanged)) {
         m_szLastTitle = PWINDOW->m_title;
@@ -603,25 +629,33 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
     }
 
-    CBox textBox = {titleBarBox.x, titleBarBox.y, (int)BARBUF.x, (int)BARBUF.y};
+    CBox       textBox = {titleBarBox.x, titleBarBox.y, (int)BARBUF.x, (int)BARBUF.y};
+
+    const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
+    const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
+    float      buttonSizes      = BARBUTTONPADDING;
+    for (auto& b : g_pGlobalState->buttons) {
+        if (buttonEnabled(b))
+            buttonSizes += b.size + BARBUTTONPADDING;
+    }
+    const auto scaledButtonsSize = buttonSizes * pMonitor->m_scale;
+    const auto scaledBarPadding  = BARPADDING * pMonitor->m_scale;
+    const auto scaledIconSize    = g_pGlobalState->config.appIconSize->value() * pMonitor->m_scale;
+    const auto iconOffset        = m_pAppIconTex ? scaledIconSize + 6 * pMonitor->m_scale : 0;
+
+    if (m_pAppIconTex) {
+        CBox iconBox = {textBox.x + scaledBarPadding + (BUTTONSRIGHT ? 0 : scaledButtonsSize), textBox.y + std::round((BARBUF.y - scaledIconSize) / 2.0), scaledIconSize,
+                        scaledIconSize};
+        g_pHyprOpenGL->renderTexture(m_pAppIconTex, iconBox, {.a = a});
+    }
+
     if (ENABLETITLE && m_pTextTex) {
-        const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
-        const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
         const auto ALIGN            = g_pGlobalState->config.barTextAlign->value();
-
-        float      buttonSizes = BARBUTTONPADDING;
-        for (auto& b : g_pGlobalState->buttons) {
-            if (buttonEnabled(b))
-                buttonSizes += b.size + BARBUTTONPADDING;
-        }
-
-        const auto scaledBorderSize  = PWINDOW->getRealBorderSize() * pMonitor->m_scale;
-        const auto scaledButtonsSize = buttonSizes * pMonitor->m_scale;
-        const auto scaledBarPadding  = BARPADDING * pMonitor->m_scale;
-        const auto xOffset           = ALIGN == "left" ? std::round(scaledBarPadding + (BUTTONSRIGHT ? 0 : scaledButtonsSize)) :
-                                                         std::round(((BARBUF.x - scaledBorderSize) / 2.0 - m_pTextTex->m_size.x / 2.0));
-        const auto yOffset           = std::round((BARBUF.y - m_pTextTex->m_size.y) / 2.0);
-        CBox       titleBox          = {textBox.x + xOffset, textBox.y + yOffset, m_pTextTex->m_size.x, m_pTextTex->m_size.y};
+        const auto scaledBorderSize = PWINDOW->getRealBorderSize() * pMonitor->m_scale;
+        const auto xOffset          = ALIGN == "left" ? std::round(scaledBarPadding + (BUTTONSRIGHT ? 0 : scaledButtonsSize) + iconOffset) :
+                                                        std::round(((BARBUF.x - scaledBorderSize) / 2.0 - m_pTextTex->m_size.x / 2.0));
+        const auto yOffset          = std::round((BARBUF.y - m_pTextTex->m_size.y) / 2.0);
+        CBox       titleBox         = {textBox.x + xOffset, textBox.y + yOffset, m_pTextTex->m_size.x, m_pTextTex->m_size.y};
 
         g_pHyprOpenGL->renderTexture(m_pTextTex, titleBox, {.a = a});
     }
@@ -655,6 +689,8 @@ void CHyprBar::onConfigReloaded() {
     m_bButtonsDirty      = true;
     m_bTitleColorChanged = true;
     m_pTextTex           = nullptr;
+    m_pAppIconTex        = nullptr;
+    m_szLastIconClass.clear();
 
     g_pDecorationPositioner->repositionDeco(this);
     damageEntire();

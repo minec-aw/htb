@@ -7,10 +7,10 @@ endif
 
 CXXFLAGS ?= -O2
 CXXFLAGS += -shared -fPIC -std=c++2b -Wno-narrowing
-INCLUDES = `pkg-config --cflags pixman-1 libdrm hyprland libinput libudev wayland-server xkbcommon`
-LIBS =
+INCLUDES = `pkg-config --cflags pixman-1 libdrm hyprland libinput libudev wayland-server xkbcommon librsvg-2.0`
+LIBS = `pkg-config --libs librsvg-2.0`
 
-SRC = main.cpp barDeco.cpp BarPassElement.cpp CSDManager.cpp
+SRC = main.cpp barDeco.cpp BarPassElement.cpp CSDManager.cpp AppIcon.cpp
 TARGET = hyprtouchbar.so
 
 all: $(TARGET)
