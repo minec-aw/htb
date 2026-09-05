@@ -29,6 +29,7 @@
 #include "BarPassElement.hpp"
 
 #include <climits>
+#include <numbers>
 
 using namespace Render::GL;
 
@@ -613,9 +614,15 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
     const auto PWORKSPACE      = PWINDOW->m_workspace;
     const auto WORKSPACEOFFSET = PWORKSPACE && !PWINDOW->m_pinned ? PWORKSPACE->m_renderOffset->value() : Vector2D();
 
-    const auto ROUNDING = PWINDOW->rounding() + (PRECEDENCE ? 0 : PWINDOW->getRealBorderSize());
-
-    const auto scaledRounding = ROUNDING > 0 ? ROUNDING * pMonitor->m_scale - 2 /* idk why but otherwise it looks bad due to the gaps */ : 0;
+    // Match Hyprland's outer window/shadow radius exactly. The inherited
+    // hyprbars code subtracted two physical pixels here, making the titlebar
+    // more square than the window mask and exposing blurred corner triangles.
+    const auto ROUNDINGBASE     = PWINDOW->rounding();
+    const auto ROUNDINGPOWER    = PWINDOW->roundingPower();
+    const auto OUTERBORDER      = PRECEDENCE ? 0 : PWINDOW->getRealBorderSize();
+    const auto CORRECTIONOFFSET = OUTERBORDER * (std::numbers::sqrt2 - 1) * std::max(2.0 - ROUNDINGPOWER, 0.0);
+    const auto ROUNDING         = ROUNDINGBASE > 0 ? ROUNDINGBASE + OUTERBORDER - CORRECTIONOFFSET : 0;
+    const auto scaledRounding   = ROUNDING * pMonitor->m_scale;
 
     m_seExtents = {{0, HEIGHT}, {}};
 

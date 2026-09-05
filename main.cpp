@@ -213,7 +213,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.2"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.3"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
