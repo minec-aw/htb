@@ -10,6 +10,7 @@
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/managers/SeatManager.hpp>
+#include <hyprland/src/managers/KeybindManager.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/pointer/PointerManager.hpp>
@@ -58,7 +59,11 @@ namespace {
         if (window->m_isFloating)
             Desktop::windowState()->raise(window);
 
-        HyprlandAPI::invokeHyprctlCommand("dispatch", action);
+        const auto split = action.find_first_of(" \t");
+        const auto name  = action.substr(0, split);
+        const auto args  = split == std::string::npos ? std::string{} : action.substr(split + 1);
+        if (const auto dispatcher = g_pKeybindManager->m_dispatchers.find(name); dispatcher != g_pKeybindManager->m_dispatchers.end())
+            dispatcher->second(args);
     }
 } // namespace
 
@@ -162,6 +167,10 @@ CCSDManager::~CCSDManager() {
 
     if (m_emulatingStylus)
         releaseEmulatedStylus(0);
+    if (m_stylusPinnedWindow) {
+        if (const auto window = m_stylusCSDWindow.lock())
+            (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
+    }
     if (m_emulatingPointer)
         g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = 0, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
 
@@ -193,8 +202,8 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
         hooks.stateChanged = top->m_events.stateChanged.listen([this, weak] { handleClientState(weak); });
 
         // Hyprland 0.56 validates xdg_toplevel.move only against pointer-button
-        // serials. Touch-down serials are valid implicit grabs too, so retain
-        // native pointer handling and add a narrowly validated touch path.
+        // serials. Touch-down and tablet-tool-down serials are valid implicit
+        // grabs too, so retain native pointer handling and add validated paths.
         if (top->m_resource) {
             hooks.xdgResource  = top->m_resource;
             hooks.originalMove = top->m_resource->requests.move;
@@ -215,13 +224,21 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
                     return;
                 }
 
-                if (!g_pSeatManager->serialValid(seat, serial) || !beginProtocolTouchMove(targetWindow))
+                if (!g_pSeatManager->serialValid(seat, serial))
                     return;
 
-                // The app has explicitly handed its touch grab to the
-                // compositor. Stop delivering that sequence to widgets/tabs.
-                g_pSeatManager->sendTouchCancel();
-                m_clientTouchCancelled = true;
+                if (beginProtocolTouchMove(targetWindow)) {
+                    // The app has explicitly handed its touch grab to the
+                    // compositor. Stop delivering that sequence to widgets/tabs.
+                    g_pSeatManager->sendTouchCancel();
+                    m_clientTouchCancelled = true;
+                    return;
+                }
+
+                // Tablet-tool down serials are also valid implicit grabs. Keep
+                // tablet input native until Chromium identifies the pixel as
+                // draggable, then track that exact stylus gesture ourselves.
+                (void)beginProtocolStylusMove(targetWindow);
             });
             hooks.moveOverridden = true;
         }
@@ -234,6 +251,15 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
 
 void CCSDManager::unregisterWindow(Desktop::View::CWindow* window) {
     m_windows.erase(window);
+    if (const auto stylusWindow = m_stylusCSDWindow.lock(); stylusWindow && stylusWindow.get() == window) {
+        m_stylusCSDWindow.reset();
+        m_stylusCSDActive    = false;
+        m_stylusCSDDragging  = false;
+        m_stylusWindowMoved  = false;
+        m_stylusPinnedWindow = false;
+        m_stylusTool.reset();
+        m_stylusTablet.reset();
+    }
     if (const auto dragging = m_dragWindow.lock(); dragging && dragging.get() == window) {
         if (m_emulatingPointer)
             g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = 0, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
@@ -354,6 +380,14 @@ bool CCSDManager::beginProtocolTouchMove(const PHLWINDOW& window) {
     return true;
 }
 
+bool CCSDManager::beginProtocolStylusMove(const PHLWINDOW& window) {
+    if (!g_pGlobalState->config.stylusDragEnabled->value() || !m_stylusCSDActive || !window || m_stylusCSDWindow.lock() != window)
+        return false;
+
+    m_stylusCSDDragging = true;
+    return true;
+}
+
 bool CCSDManager::armDrag(const Vector2D& position, bool touch, int touchID) {
     const auto window = csdWindowAt(position);
     if (!window || !inDragRegion(window, position))
@@ -405,7 +439,7 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
         }
 
         const auto target = position - m_dragGrabOffset;
-        HyprlandAPI::invokeHyprctlCommand("dispatch", std::format("movewindowpixel exact {} {},activewindow", static_cast<int>(target.x), static_cast<int>(target.y)));
+        g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", static_cast<int>(target.x), static_cast<int>(target.y)));
         info.cancelled = true;
         return;
     }
@@ -571,20 +605,23 @@ Vector2D CCSDManager::tabletPosition(const SP<CTablet>& tablet, const Vector2D& 
     return g_pInputManager->getMouseCoordsInternal();
 }
 
-bool CCSDManager::overManagedTitlebar(const Vector2D& position) const {
+bool CCSDManager::overPluginTitlebar(const Vector2D& position) const {
     for (const auto& bar : g_pGlobalState->bars) {
         if (bar && bar->containsPoint(position))
             return true;
     }
+    return false;
+}
 
+PHLWINDOW CCSDManager::csdTitlebarAt(const Vector2D& position) const {
     Desktop::CViewHitTester hitTester{*Desktop::viewState()};
     const auto              window = hitTester.windowAt(position, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
     if (!window || !validMapped(window) || !windowHasCSD(window))
-        return false;
+        return nullptr;
 
     const auto box   = window->geometricBox(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
     const auto local = position - box.pos();
-    return VECINRECT(local, 0, 0, box.w, std::min<double>(box.h, g_pGlobalState->config.csdTitlebarHeight->value()));
+    return VECINRECT(local, 0, 0, box.w, std::min<double>(box.h, g_pGlobalState->config.csdTitlebarHeight->value())) ? window : nullptr;
 }
 
 void CCSDManager::releaseEmulatedStylus(uint32_t timeMs) {
@@ -601,39 +638,72 @@ void CCSDManager::onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& in
         return;
 
     if (event.in) {
-        if (m_emulatingStylus || m_emulatingPointer)
+        if (m_emulatingStylus || m_emulatingPointer || m_stylusCSDActive)
             return;
 
         m_stylusTablet      = event.tablet;
         m_stylusNormalized  = event.tip;
         const auto position = event.tablet->m_relativeInput ? g_pInputManager->getMouseCoordsInternal() : tabletPosition(event.tablet, event.tip);
-        if (!overManagedTitlebar(position)) {
+
+        if (overPluginTitlebar(position)) {
+            m_emulatingStylus = true;
+            m_stylusTool      = event.tool;
+            g_pInputManager->refocus();
+            g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = event.timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_PRESSED, .mouse = false}, nullptr);
+            info.cancelled = true;
+            return;
+        }
+
+        const auto csdWindow = csdTitlebarAt(position);
+        if (!csdWindow) {
             m_stylusTablet.reset();
             return;
         }
 
-        m_emulatingStylus = true;
-        m_stylusTool      = event.tool;
-        g_pInputManager->refocus();
-        g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = event.timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_PRESSED, .mouse = false}, nullptr);
+        // Keep this as native tablet input. Chromium can now use its own exact
+        // hit testing and hand us a tablet serial only for a real drag region.
+        m_stylusTool         = event.tool;
+        m_stylusCSDWindow    = csdWindow;
+        m_stylusGrabOffset   = position - csdWindow->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        m_stylusCSDActive    = true;
+        m_stylusCSDDragging  = false;
+        m_stylusWindowMoved  = false;
+        m_stylusPinnedWindow = false;
+        return;
+    }
+
+    if (m_emulatingStylus && event.tool == m_stylusTool) {
+        if (event.tablet && !event.tablet->m_relativeInput) {
+            m_stylusNormalized = event.tip;
+            tabletPosition(event.tablet, event.tip);
+            g_pInputManager->simulateMouseMovement();
+        }
+        releaseEmulatedStylus(event.timeMs);
         info.cancelled = true;
         return;
     }
 
-    if (!m_emulatingStylus || event.tool != m_stylusTool)
+    if (!m_stylusCSDActive || event.tool != m_stylusTool)
         return;
 
-    if (event.tablet && !event.tablet->m_relativeInput) {
-        m_stylusNormalized = event.tip;
-        tabletPosition(event.tablet, event.tip);
-        g_pInputManager->simulateMouseMovement();
+    if (m_stylusPinnedWindow) {
+        if (const auto window = m_stylusCSDWindow.lock())
+            (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
     }
-    releaseEmulatedStylus(event.timeMs);
-    info.cancelled = true;
+    m_stylusCSDWindow.reset();
+    m_stylusCSDActive    = false;
+    m_stylusCSDDragging  = false;
+    m_stylusWindowMoved  = false;
+    m_stylusPinnedWindow = false;
+    m_stylusTool.reset();
+    m_stylusTablet.reset();
+    // Do not cancel: Hyprland and the client still need the tablet-tool up.
 }
 
 void CCSDManager::onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& info) {
-    if (!m_emulatingStylus || event.tool != m_stylusTool || !event.tablet)
+    const bool emulated = m_emulatingStylus && event.tool == m_stylusTool;
+    const bool csdDrag  = m_stylusCSDActive && m_stylusCSDDragging && event.tool == m_stylusTool;
+    if ((!emulated && !csdDrag) || !event.tablet)
         return;
 
     if (event.tablet->m_relativeInput)
@@ -646,11 +716,53 @@ void CCSDManager::onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& 
         tabletPosition(event.tablet, m_stylusNormalized);
     }
 
-    g_pInputManager->simulateMouseMovement();
+    if (emulated) {
+        g_pInputManager->simulateMouseMovement();
+        info.cancelled = true;
+        return;
+    }
+
+    const auto window = m_stylusCSDWindow.lock();
+    if (!window || !validMapped(window))
+        return;
+
+    if (!m_stylusWindowMoved) {
+        if (Desktop::focusState()->window() != window)
+            Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
+        if (window->m_isFloating)
+            Desktop::windowState()->raise(window);
+        else
+            (void)Config::Actions::floatWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_ENABLE, window);
+        if (!window->m_pinned) {
+            (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_ENABLE, window);
+            m_stylusPinnedWindow = true;
+        }
+        m_stylusWindowMoved = true;
+    }
+
+    const auto target = g_pInputManager->getMouseCoordsInternal() - m_stylusGrabOffset;
+    g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", static_cast<int>(target.x), static_cast<int>(target.y)));
     info.cancelled = true;
 }
 
 void CCSDManager::onTabletProximity(CTablet::SProximityEvent event, Event::SCallbackInfo&) {
-    if (m_emulatingStylus && event.tool == m_stylusTool && !event.in)
+    if (event.in || event.tool != m_stylusTool)
+        return;
+    if (m_emulatingStylus) {
         releaseEmulatedStylus(event.timeMs);
+        return;
+    }
+    if (m_stylusCSDActive) {
+        if (m_stylusPinnedWindow) {
+            if (const auto window = m_stylusCSDWindow.lock())
+                (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
+        }
+        m_stylusCSDWindow.reset();
+        m_stylusCSDActive    = false;
+        m_stylusCSDDragging  = false;
+        m_stylusWindowMoved  = false;
+        m_stylusPinnedWindow = false;
+        m_stylusTool.reset();
+        m_stylusTablet.reset();
+    }
 }

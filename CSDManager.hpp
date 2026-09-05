@@ -24,6 +24,7 @@ class CCSDManager {
     void registerWindow(const PHLWINDOW& window);
     void refresh();
     bool beginProtocolTouchMove(const PHLWINDOW& window);
+    bool beginProtocolStylusMove(const PHLWINDOW& window);
 
   private:
     struct SWindowHooks {
@@ -65,6 +66,12 @@ class CCSDManager {
     SP<Aquamarine::ITabletTool>                               m_stylusTool;
     SP<CTablet>                                               m_stylusTablet;
     Vector2D                                                  m_stylusNormalized;
+    PHLWINDOWREF                                              m_stylusCSDWindow;
+    Vector2D                                                  m_stylusGrabOffset;
+    bool                                                      m_stylusCSDActive    = false;
+    bool                                                      m_stylusCSDDragging  = false;
+    bool                                                      m_stylusWindowMoved  = false;
+    bool                                                      m_stylusPinnedWindow = false;
 
     void                                                      unregisterWindow(Desktop::View::CWindow* window);
     void                                                      applySuppression(const PHLWINDOW& window);
@@ -88,6 +95,7 @@ class CCSDManager {
     void                                                      onTabletProximity(CTablet::SProximityEvent event, Event::SCallbackInfo& info);
 
     Vector2D                                                  tabletPosition(const SP<CTablet>& tablet, const Vector2D& normalized);
-    bool                                                      overManagedTitlebar(const Vector2D& position) const;
+    bool                                                      overPluginTitlebar(const Vector2D& position) const;
+    PHLWINDOW                                                 csdTitlebarAt(const Vector2D& position) const;
     void                                                      releaseEmulatedStylus(uint32_t timeMs);
 };
