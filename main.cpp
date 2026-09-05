@@ -15,6 +15,7 @@
 
 #include "barDeco.hpp"
 #include "CSDManager.hpp"
+#include "TopEdgeSnap.hpp"
 #include "globals.hpp"
 
 extern "C" {
@@ -196,6 +197,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(csdControlsLeft, CIntValue, "csd_controls_left", "Non-draggable CSD control width on the left", 0);
     ADD_CONFIG(csdControlsRight, CIntValue, "csd_controls_right", "Non-draggable CSD control width on the right", 150);
     ADD_CONFIG(csdDragThreshold, CIntValue, "csd_drag_threshold", "Movement before a CSD drag starts", 8);
+    ADD_CONFIG(topEdgeMaximize, CBoolValue, "top_edge_maximize", "Maximize on window-drag release at a monitor's top edge", true);
+    ADD_CONFIG(topEdgeDistance, CIntValue, "top_edge_distance", "Top-edge release zone in logical pixels (0-128)", 12);
     ADD_CONFIG(minimizeAction, CStringValue, "minimize_action", "Dispatcher action for SSD and CSD minimize", "movetoworkspacesilent special:minimized");
     ADD_CONFIG(maximizeAction, CStringValue, "maximize_action", "Dispatcher action overriding native maximize; empty keeps native", "");
     ADD_CONFIG(closeAction, CStringValue, "close_action", "Dispatcher action overriding native close; empty keeps native", "");
@@ -207,17 +210,20 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto preReload    = Event::bus()->m_events.config.preReload.listen([] { onPreConfigReload(); });
     static auto reloaded     = Event::bus()->m_events.config.reloaded.listen([] { onConfigReloaded(); });
 
-    g_pGlobalState->csdManager = makeUnique<CCSDManager>();
+    g_pGlobalState->topEdgeSnap = makeUnique<CTopEdgeSnap>();
+    g_pGlobalState->csdManager  = makeUnique<CCSDManager>();
     for (const auto& window : Desktop::windowState()->windows()) {
         if (!window->isHidden() && validMapped(window))
             onNewWindow(window);
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.4.1"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.5.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    // Cancel idle maximization before input cleanup synthesizes releases.
+    g_pGlobalState->topEdgeSnap.reset();
     g_pGlobalState->csdManager.reset();
     for (const auto& monitor : State::monitorState()->monitors())
         monitor->m_scheduledRecalc = true;

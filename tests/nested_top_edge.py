@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Isolated Wayland smoke/regression test; never injects input into the parent.
+Requires Hyprland 0.56.2, its headers, a C++ compiler, alacritty, and a Wayland session.
+Usage: python3 tests/nested_top_edge.py [path/to/hyprtouchbar.so]
+"""
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess as sp
+import sys
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parent.parent
+PLUGIN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "hyprtouchbar.so"
+
+
+def wait_for(fn, timeout=12):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = fn()
+        if result:
+            return result
+        time.sleep(0.15)
+    raise AssertionError("Timed out waiting for nested compositor/client")
+
+
+with tempfile.TemporaryDirectory(prefix="htb-edge-test-") as temp:
+    tmp = Path(temp)
+    driver = tmp / "input-driver.so"
+    cflags = shlex.split(sp.check_output(["pkg-config", "--cflags", "hyprland", "pixman-1", "libdrm", "libinput", "wayland-server"], text=True))
+    sp.run([os.environ.get("CXX", "g++"), "-std=c++23", "-shared", "-fPIC", "-fno-gnu-unique", *cflags,
+            str(ROOT / "tests/input-driver.cpp"), "-o", str(driver)], check=True)
+    config = tmp / "hyprland.conf"
+    config.write_text(f"""monitor = ,1000x700@60,auto,1
+animations:enabled = false
+general:gaps_in = 6
+general:gaps_out = 10
+decoration:rounding = 8
+misc:disable_hyprland_logo = true
+misc:disable_splash_rendering = true
+xwayland:enabled = false
+debug:disable_logs = false
+debug:enable_stdout_logs = true
+plugin = {PLUGIN}
+plugin = {driver}
+plugin:hyprtouchbar {{
+    bar_blur = false
+    show_app_icon = false
+    top_edge_maximize = true
+    top_edge_distance = 12
+}}
+exec-once = alacritty --class htb-regression
+""")
+    env = os.environ.copy()
+    env.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+    log = (tmp / "compositor.log").open("w+")
+    proc = sp.Popen(["Hyprland", "--config", str(config)], env=env, stdout=log, stderr=sp.STDOUT)
+    instance = None
+    try:
+        def find_instance():
+            instances = json.loads(sp.check_output(["hyprctl", "instances", "-j"], text=True))
+            return next((i["instance"] for i in instances if i["pid"] == proc.pid), None)
+        instance = wait_for(find_instance)
+        def ctl(*args):
+            return sp.check_output(["hyprctl", "-i", instance, *args], text=True).strip()
+        def dispatch(command, args=""):
+            result = ctl("dispatch", command, args)
+            assert result == "ok", result
+            time.sleep(0.08)
+        def input_(kind, x=0, y=0, id_=7):
+            dispatch("htb-test.input", f"{kind} {x} {y} {id_}")
+        def client():
+            return next((w for w in json.loads(ctl("clients", "-j")) if w["class"] == "htb-regression"), None)
+        wait_for(client)
+        assert not ctl("configerrors"), ctl("configerrors")
+        assert "Plugin hyprtouchbar by" in ctl("plugin", "list")
+        def reset():
+            w = client()
+            dispatch("focuswindow", "address:" + w["address"])
+            input_("restore")
+            w = client()
+            if not w["floating"]:
+                dispatch("togglefloating")
+            dispatch("resizewindowpixel", "exact 500 320,address:" + w["address"])
+            dispatch("movewindowpixel", "exact 220 230,address:" + w["address"])
+            return client()
+        def assert_maximized():
+            w = client()
+            assert w["fullscreen"] == 1 and w["fullscreenClient"] == 1, w
+        def assert_normal():
+            w = client()
+            assert w["fullscreen"] == 0 and w["fullscreenClient"] == 0, w
+        def mouse_drag(end_y):
+            w = client()
+            input_("hover", w["at"][0] + 180, w["at"][1] - 20)
+            input_("down")
+            input_("move", 410, 170)
+            input_("move", 440, end_y)
+            input_("up")
+        def touch_drag(finish="touch-up", end_y=4):
+            w = client()
+            input_("touch-down", w["at"][0] + 180, w["at"][1] - 20)
+            input_("touch-move", 410, 170)
+            input_("touch-move", 440, end_y)
+            input_(finish)
+
+        original = reset()
+        mouse_drag(4)
+        assert_maximized()
+        input_("restore")
+        assert client()["floating"] and client()["size"] == original["size"], client()
+        print("PASS pointer titlebar release -> maximize; original floating size restored")
+
+        reset()
+        w = client()
+        input_("hover", w["at"][0] + 180, w["at"][1] - 20)
+        input_("down")
+        input_("up")
+        assert_normal()
+        print("PASS a titlebar click without motion does not maximize")
+
+        reset()
+        mouse_drag(100)
+        assert_normal()
+        print("PASS release away from top does not maximize")
+
+        reset()
+        w = client()
+        input_("hover", w["at"][0] + 180, w["at"][1] - 20)
+        input_("down")
+        input_("move", 420, 4)
+        input_("move", 440, 160)
+        input_("up")
+        assert_normal()
+        print("PASS visiting top edge then leaving does not latch maximize")
+
+        reset()
+        assert ctl("keyword", "plugin:hyprtouchbar:top_edge_maximize", "false") == "ok"
+        mouse_drag(4)
+        assert_normal()
+        assert ctl("keyword", "plugin:hyprtouchbar:top_edge_maximize", "true") == "ok"
+        print("PASS disabling top_edge_maximize")
+
+        reset()
+        input_("hover", 400, 260)
+        input_("down")
+        input_("native-resize")
+        input_("move", 440, 4)
+        input_("up")
+        assert_normal()
+        print("PASS resize at top is not a window move")
+
+        original = reset()
+        touch_drag()
+        assert_maximized()
+        input_("restore")
+        assert client()["floating"] and not client()["pinned"] and client()["size"] == original["size"], client()
+        print("PASS raw touchscreen titlebar (nonzero ID) -> maximize and restore")
+
+        reset()
+        touch_drag("touch-cancel")
+        assert_normal()
+        assert not client()["pinned"], client()
+        print("PASS cancelled touch at top does not maximize or leave a pin")
+
+        reset()
+        input_("hover", 400, 260)
+        input_("down")
+        input_("native-move")
+        input_("move", 440, 4)
+        input_("up")
+        assert_maximized()
+        print("PASS native compositor move (CSD/modifier drag path)")
+
+        reset()
+        dispatch("pin")
+        mouse_drag(4)
+        assert_normal()
+        assert client()["pinned"], client()
+        dispatch("pin")
+        print("PASS originally pinned windows remain pinned and unmaximized")
+
+        reset()
+        dispatch("togglefloating")
+        w = client()
+        input_("hover", w["at"][0] + 180, w["at"][1] + 50)
+        input_("down")
+        input_("native-move")
+        input_("move", 440, 4)
+        input_("up")
+        assert_maximized()
+        input_("restore")
+        assert not client()["floating"], client()
+        print("PASS tiled native move -> maximize, then restore to tiling")
+
+        original = reset()
+        w = client()
+        input_("pen-down", w["at"][0] + 180, w["at"][1] - 20)
+        input_("pen-move", 410, 170)
+        input_("pen-move", 440, 4)
+        input_("pen-up", 440, 4)
+        assert_maximized()
+        input_("restore")
+        assert client()["floating"] and client()["size"] == original["size"], client()
+        print("PASS stylus on plugin titlebar -> maximize and restore")
+
+        reset()
+        w = client()
+        input_("pen-down", w["at"][0] + 180, w["at"][1] - 20)
+        input_("pen-move", 410, 170)
+        input_("pen-move", 440, 4)
+        input_("pen-out", 440, 4)
+        assert_normal()
+        print("PASS stylus proximity loss cancels without maximizing")
+
+        # Treat the probe as a CSD client to exercise native request completion.
+        # No application-name guessing or changes to the parent compositor.
+        assert ctl("keyword", "plugin:hyprtouchbar:csd_detection", "all") == "ok"
+        assert ctl("keyword", "plugin:hyprtouchbar:csd_touch_emulation", "false") == "ok"
+        original = reset()
+        w = client()
+        input_("pen-down", w["at"][0] + 180, w["at"][1] + 20)
+        input_("client-move-request")
+        input_("pen-move", 410, 170)
+        input_("pen-move", 440, 4)
+        input_("pen-up", 440, 4)
+        assert_maximized()
+        input_("restore")
+        assert client()["floating"] and not client()["pinned"] and client()["size"] == original["size"], client()
+        print("PASS native CSD tablet request -> maximize and restore")
+
+        reset()
+        w = client()
+        input_("touch-down", w["at"][0] + 180, w["at"][1] + 20)
+        input_("client-move-request")
+        input_("touch-move", 410, 170)
+        input_("touch-move", 440, 4)
+        input_("touch-up")
+        assert_maximized()
+        assert not client()["pinned"], client()
+        print("PASS native CSD touch request -> maximize")
+
+        reset()
+        w = client()
+        input_("pen-down", w["at"][0] + 180, w["at"][1] + 20)
+        input_("pen-move", 440, 4)
+        input_("pen-up", 440, 4)
+        assert_normal()
+        print("PASS CSD widget gesture without a move request stays native")
+
+        input_("restore")
+        assert ctl("plugin", "unload", str(PLUGIN)) == "ok"
+        assert "Plugin hyprtouchbar by" not in ctl("plugin", "list")
+        assert ctl("plugin", "load", str(PLUGIN)) == "ok"
+        wait_for(lambda: "Plugin hyprtouchbar by" in ctl("plugin", "list"))
+        reset()
+        mouse_drag(4)
+        assert_maximized()
+        print("PASS unload/reload with existing client, then snap again")
+    except Exception:
+        log.flush()
+        log.seek(0)
+        print(log.read()[-10000:], file=sys.stderr)
+        raise
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=8)
+            except sp.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        log.close()

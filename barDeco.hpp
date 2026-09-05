@@ -98,7 +98,7 @@ class CHyprBar : public IHyprWindowDecoration {
     void                      onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e);
 
     void                      handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch::SDownEvent> touchEvent);
-    void                      handleUpEvent(Event::SCallbackInfo& info);
+    void                      handleUpEvent(Event::SCallbackInfo& info, bool snap = true);
     void                      handleMovement();
     bool                      doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButtonPadding, Config::INTEGER barHeight, Vector2D COORDS, bool BUTTONSRIGHT);
 
@@ -107,6 +107,7 @@ class CHyprBar : public IHyprWindowDecoration {
     CHyprSignalListener       m_pMouseButtonCallback;
     CHyprSignalListener       m_pTouchDownCallback;
     CHyprSignalListener       m_pTouchUpCallback;
+    CHyprSignalListener       m_pTouchCancelCallback;
 
     CHyprSignalListener       m_pTouchMoveCallback;
     CHyprSignalListener       m_pMouseMoveCallback;
@@ -126,6 +127,8 @@ class CHyprBar : public IHyprWindowDecoration {
     int                       m_touchId        = 0;
     Vector2D                  m_touchGrabOffset;
     Vector2D                  m_touchDownPosition;
+    Vector2D                  m_lastTouchPosition;
+    PHLMONITORREF             m_touchMonitor;
     bool                      m_bPinnedForTouchDrag = false;
 
     // store hover state for buttons as a bitfield

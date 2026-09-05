@@ -30,11 +30,13 @@ struct SHyprButton {
 
 class CHyprBar;
 class CCSDManager;
+class CTopEdgeSnap;
 
 struct SGlobalState {
     std::vector<SHyprButton>  buttons;
     std::vector<WP<CHyprBar>> bars;
     UP<CCSDManager>           csdManager;
+    UP<CTopEdgeSnap>          topEdgeSnap;
 
     uint32_t                  nobarRuleIdx      = 0;
     uint32_t                  barColorRuleIdx   = 0;
@@ -50,6 +52,8 @@ struct SGlobalState {
         SP<Config::Values::CIntValue>        barPadding;
         SP<Config::Values::CIntValue>        barButtonPadding;
         SP<Config::Values::CIntValue>        cornerRadius;
+        SP<Config::Values::CBoolValue>       topEdgeMaximize;
+        SP<Config::Values::CIntValue>        topEdgeDistance;
         SP<Config::Values::CIntValue>        appIconSize, buttonIconSize;
         SP<Config::Values::CIntValue>        csdTitlebarHeight, csdControlsLeft, csdControlsRight, csdDragThreshold;
         SP<Config::Values::CBoolValue>       barBlur, barTitleEnabled, barPartOfWindow, barPrecedenceOverBorder, enabled, iconOnHover;

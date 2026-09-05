@@ -1,5 +1,5 @@
 project('hyprtouchbar', 'cpp',
-  version: '1.0.0',
+  version: '1.5.0',
   default_options: ['buildtype=release'],
 )
 
@@ -24,6 +24,7 @@ src = files(
   'BarPassElement.cpp',
   'CSDManager.cpp',
   'AppIcon.cpp',
+  'TopEdgeSnap.cpp',
 )
 
 shared_module(meson.project_name(), src,

@@ -26,6 +26,7 @@
 
 #include "globals.hpp"
 #include "AppIcon.hpp"
+#include "TopEdgeSnap.hpp"
 #include "BarPassElement.hpp"
 
 #include <climits>
@@ -48,6 +49,10 @@ CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
     m_pMouseButtonCallback = Event::bus()->m_events.input.mouse.button.listen([&](IPointer::SButtonEvent e, Event::SCallbackInfo& info) { onMouseButton(info, e); });
     m_pTouchDownCallback   = Event::bus()->m_events.input.touch.down.listen([&](ITouch::SDownEvent e, Event::SCallbackInfo& info) { onTouchDown(info, e); });
     m_pTouchUpCallback     = Event::bus()->m_events.input.touch.up.listen([&](ITouch::SUpEvent e, Event::SCallbackInfo& info) { onTouchUp(info, e); });
+    m_pTouchCancelCallback = Event::bus()->m_events.input.touch.cancel.listen([this](ITouch::SCancelEvent e, Event::SCallbackInfo& info) {
+        if (m_bTouchEv && e.touchID == m_touchId)
+            handleUpEvent(info, false);
+    });
 
     // move events
     m_pTouchMoveCallback = Event::bus()->m_events.input.touch.motion.listen([&](ITouch::SMotionEvent e, Event::SCallbackInfo& info) { onTouchMove(info, e); });
@@ -205,11 +210,15 @@ void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
     if (!m_bDragPending || !m_bTouchEv || !validMapped(m_pWindow) || e.touchID != m_touchId)
         return;
 
-    auto PMONITOR     = m_pWindow->m_monitor.lock();
-    PMONITOR          = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
-    const auto COORDS = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y);
+    // The input device stays mapped to the output on which the gesture began,
+    // even if the dragged window moves to another monitor.
+    const auto PMONITOR = m_touchMonitor.lock();
+    if (!PMONITOR)
+        return;
+    const auto COORDS   = PMONITOR->m_position + e.pos * PMONITOR->m_size;
+    m_lastTouchPosition = COORDS;
 
-    if ((COORDS - m_touchDownPosition).size() < g_pGlobalState->config.csdDragThreshold->value())
+    if (!m_bDraggingThis && (COORDS - m_touchDownPosition).size() < g_pGlobalState->config.csdDragThreshold->value())
         return;
 
     const auto PWINDOW = m_pWindow.lock();
@@ -250,8 +259,12 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
                 break;
             }
         }
-        PMONITOR              = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
+        PMONITOR = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
+        if (!PMONITOR)
+            return;
+        m_touchMonitor        = PMONITOR;
         m_touchDownPosition   = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y);
+        m_lastTouchPosition   = m_touchDownPosition;
         m_touchGrabOffset     = m_touchDownPosition - PWINDOW->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
         m_bPinnedForTouchDrag = false;
         COORDS                = m_touchDownPosition - assignedBoxGlobal().pos();
@@ -303,7 +316,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     }
 }
 
-void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
+void CHyprBar::handleUpEvent(Event::SCallbackInfo& info, bool snap) {
     if (m_pWindow.lock() != Desktop::focusState()->window() && !m_bDraggingThis)
         return;
 
@@ -319,16 +332,24 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
             (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, m_pWindow.lock());
         m_bPinnedForTouchDrag = false;
 
+        if (snap && m_bTouchEv && g_pGlobalState->topEdgeSnap)
+            g_pGlobalState->topEdgeSnap->finish(m_pWindow.lock(), m_lastTouchPosition);
+
         Log::logger->log(Log::DEBUG, "[hyprtouchbar] Dragging ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }
 
     m_bDragPending = false;
     m_bTouchEv     = false;
     m_touchId      = 0;
+    m_touchMonitor.reset();
 }
 
 void CHyprBar::handleMovement() {
-    g_pKeybindManager->changeMouseBindMode(MBIND_MOVE);
+    // The first motion may already be outside the bar. Drag the window that
+    // received the press, not whichever window is now under the pointer.
+    if (!validMapped(m_pWindow) || g_layoutManager->dragController()->target())
+        return;
+    g_layoutManager->beginDragTarget(m_pWindow->layoutTarget(), MBIND_MOVE);
     m_bDraggingThis = true;
     Log::logger->log(Log::DEBUG, "[hyprtouchbar] Dragging initiated on {:x}", (uintptr_t)m_pWindow.lock().get());
     return;

@@ -46,12 +46,14 @@ class CCSDManager {
     CHyprSignalListener                                       m_touchDown;
     CHyprSignalListener                                       m_touchMove;
     CHyprSignalListener                                       m_touchUp;
+    CHyprSignalListener                                       m_touchCancel;
     CHyprSignalListener                                       m_tabletAxis;
     CHyprSignalListener                                       m_tabletTip;
     CHyprSignalListener                                       m_tabletProximity;
 
     PHLWINDOWREF                                              m_dragWindow;
     Vector2D                                                  m_dragOrigin;
+    Vector2D                                                  m_lastTouchPosition;
     bool                                                      m_dragPending = false;
     bool                                                      m_dragging    = false;
     bool                                                      m_touchDrag   = false;
@@ -68,6 +70,7 @@ class CCSDManager {
     Vector2D                                                  m_stylusNormalized;
     PHLWINDOWREF                                              m_stylusCSDWindow;
     Vector2D                                                  m_stylusGrabOffset;
+    Vector2D                                                  m_stylusDownPosition;
     bool                                                      m_stylusCSDActive    = false;
     bool                                                      m_stylusCSDDragging  = false;
     bool                                                      m_stylusWindowMoved  = false;
@@ -83,13 +86,14 @@ class CCSDManager {
     Vector2D                                                  touchPosition(const ITouch::SMotionEvent& event) const;
     bool                                                      armDrag(const Vector2D& position, bool touch, int touchID);
     void                                                      updateDrag(Event::SCallbackInfo& info, const Vector2D& position, bool touch, int touchID);
-    void                                                      finishDrag(Event::SCallbackInfo& info, bool touch, int touchID);
+    void                                                      finishDrag(Event::SCallbackInfo& info, bool touch, int touchID, bool snap = true);
 
     void                                                      onMouseButton(IPointer::SButtonEvent event, Event::SCallbackInfo& info);
     void                                                      onMouseMove(const Vector2D& position, Event::SCallbackInfo& info);
     void                                                      onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo& info);
     void                                                      onTouchMove(ITouch::SMotionEvent event, Event::SCallbackInfo& info);
     void                                                      onTouchUp(ITouch::SUpEvent event, Event::SCallbackInfo& info);
+    void                                                      onTouchCancel(ITouch::SCancelEvent event, Event::SCallbackInfo& info);
     void                                                      onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& info);
     void                                                      onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& info);
     void                                                      onTabletProximity(CTablet::SProximityEvent event, Event::SCallbackInfo& info);
@@ -97,5 +101,5 @@ class CCSDManager {
     Vector2D                                                  tabletPosition(const SP<CTablet>& tablet, const Vector2D& normalized);
     bool                                                      overPluginTitlebar(const Vector2D& position) const;
     PHLWINDOW                                                 csdTitlebarAt(const Vector2D& position) const;
-    void                                                      releaseEmulatedStylus(uint32_t timeMs);
+    void                                                      releaseEmulatedStylus(uint32_t timeMs, bool snap = false);
 };

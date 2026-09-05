@@ -8,6 +8,7 @@ It adds server-side titlebars only when an application does not already have cli
 - protocol-driven touchscreen dragging using each application's exact CSD draggable regions
 - working CSD minimize requests with a configurable Hyprland dispatcher action
 - native CSD maximize behavior, or an optional configurable override
+- drag-to-top maximization on release (mouse, touch, and stylus)
 - application icons resolved from desktop files and freedesktop icon themes
 - large built-in close, maximize, and minimize targets
 - translucent active/inactive colors, blur, rounded hover states, and modern defaults
@@ -82,6 +83,8 @@ plugin:hyprtouchbar {
 
     # Touchscreen and stylus handling
     stylus_drag_enabled = true
+    top_edge_maximize = true
+    top_edge_distance = 12
     csd_detection = auto
     csd_drag_enabled = true
     csd_touch_emulation = true
@@ -153,6 +156,23 @@ windowrule {
 
 Other dynamic rule effects are `hyprtouchbar:bar_color` and `hyprtouchbar:title_color`.
 
+## Drag to the top to maximize
+
+Drag a window to a monitor's top edge and **release** to maximize it. Enabled by default for plugin titlebars and compositor window moves initiated by CSDs (including native tablet/touch requests and emulated pointer input). Modifier + mouse window drags also work.
+
+In your existing Lua plugin configuration:
+
+```lua
+hyprtouchbar = {
+    top_edge_maximize = true,
+    top_edge_distance = 12,
+}
+```
+
+`top_edge_distance` is the release zone's height in **logical pixels**, clamped to 0–128. `0` requires the exact edge. It uses each monitor's actual top edge, including on scaled/offset outputs; maximized geometry respects Hyprland's workspace work area, panels and gaps. Disable the feature with `top_edge_maximize = false`.
+
+Only completed window-move gestures qualify. Clicking a titlebar button, resizing, dragging tabs/widgets without a compositor window move, cancellation, or moving away from the top before releasing will not trigger it. Originally pinned windows are left alone. Top-edge maximize is independent of `maximize_action` and sets the native maximized state rather than true fullscreen. The normal maximize/restore button restores the floating size saved by Hyprland immediately before maximizing (or the tiled layout for tiled windows).
+
 ## Touch and stylus dragging notes
 
 With `stylus_drag_enabled = true`, a pen tip over a plugin titlebar is routed through its pointer-style caption handling. Over a detected CSD window, tablet input remains native until the application identifies the exact pixel as draggable with `xdg_toplevel.move`; the plugin then accepts the tablet-tool serial and tracks the pen directly. Motion follows the tablet's output and active-area mapping. Stylus input outside titlebars remains native, including pressure and tilt.
@@ -185,4 +205,13 @@ hl.plugin.hyprtouchbar.add_button({
 Hyprland --config "$PWD/test-nested.conf"
 ```
 
-This opens Hyprland as a window inside the existing Wayland Plasma session. Press `Super+M` inside it to exit.
+This opens Hyprland as a window inside the existing Wayland session (Plasma or Hyprland). Press `Super+M` inside it to exit.
+
+Regression tests:
+
+```bash
+make test
+python3 tests/nested_top_edge.py
+```
+
+The second command starts its own nested compositor and injects input **only there**. See [tests/README.md](tests/README.md) for coverage and limitations.

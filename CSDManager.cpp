@@ -1,5 +1,7 @@
 #include "CSDManager.hpp"
 #include "barDeco.hpp"
+#include "TopEdgeSnap.hpp"
+#include "TopEdgePolicy.hpp"
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
@@ -148,6 +150,7 @@ CCSDManager::CCSDManager() {
     m_touchDown   = Event::bus()->m_events.input.touch.down.listen([this](ITouch::SDownEvent event, Event::SCallbackInfo& info) { onTouchDown(event, info); });
     m_touchMove   = Event::bus()->m_events.input.touch.motion.listen([this](ITouch::SMotionEvent event, Event::SCallbackInfo& info) { onTouchMove(event, info); });
     m_touchUp     = Event::bus()->m_events.input.touch.up.listen([this](ITouch::SUpEvent event, Event::SCallbackInfo& info) { onTouchUp(event, info); });
+    m_touchCancel = Event::bus()->m_events.input.touch.cancel.listen([this](ITouch::SCancelEvent event, Event::SCallbackInfo& info) { onTouchCancel(event, info); });
     m_tabletAxis  = Event::bus()->m_events.input.tablet.axis.listen([this](CTablet::SAxisEvent event, Event::SCallbackInfo& info) { onTabletAxis(event, info); });
     m_tabletTip   = Event::bus()->m_events.input.tablet.tip.listen([this](CTablet::STipEvent event, Event::SCallbackInfo& info) { onTabletTip(event, info); });
     m_tabletProximity =
@@ -462,7 +465,7 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
     m_dragging = true;
 }
 
-void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID) {
+void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID, bool snap) {
     if (!m_dragPending || touch != m_touchDrag || touchID != m_touchID)
         return;
 
@@ -479,6 +482,9 @@ void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID
     if (touch || m_dragging)
         info.cancelled = true;
 
+    if (snap && touch && m_dragging && g_pGlobalState->topEdgeSnap)
+        g_pGlobalState->topEdgeSnap->finish(m_dragWindow.lock(), m_lastTouchPosition);
+
     m_dragWindow.reset();
     m_dragPending          = false;
     m_dragging             = false;
@@ -491,6 +497,10 @@ void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID
 }
 
 void CCSDManager::onMouseButton(IPointer::SButtonEvent event, Event::SCallbackInfo& info) {
+    // Inspect the layout's move target before any release handler clears it.
+    // Emulated touch/stylus pointer sequences intentionally use this path too.
+    if (g_pGlobalState->topEdgeSnap)
+        g_pGlobalState->topEdgeSnap->pointerButton(event);
     if (m_emulatingPointer || m_emulatingStylus || event.button != BTN_LEFT)
         return;
     if (event.state == WL_POINTER_BUTTON_STATE_PRESSED) {
@@ -526,6 +536,7 @@ void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo& in
     m_touchDrag            = true;
     m_dragWindow           = window;
     m_dragOrigin           = position;
+    m_lastTouchPosition    = position;
     m_dragGrabOffset       = position - window->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
     m_dragPending          = g_pGlobalState->config.csdDragFallback->value() && windowHasCSD(window) && inDragRegion(window, position);
     m_dragging             = false;
@@ -551,6 +562,8 @@ void CCSDManager::onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo& in
 }
 
 void CCSDManager::onTouchMove(ITouch::SMotionEvent event, Event::SCallbackInfo& info) {
+    if (m_touchActive && event.touchID == m_touchID)
+        m_lastTouchPosition = touchPosition(event);
     if (m_emulatingPointer && m_touchActive && event.touchID == m_touchID) {
         Pointer::mgr()->warpTo(touchPosition(event));
         g_pInputManager->simulateMouseMovement();
@@ -590,6 +603,22 @@ void CCSDManager::onTouchUp(ITouch::SUpEvent event, Event::SCallbackInfo& info) 
     }
 }
 
+void CCSDManager::onTouchCancel(ITouch::SCancelEvent event, Event::SCallbackInfo& info) {
+    if (!m_touchActive || event.touchID != m_touchID)
+        return;
+    if (m_emulatingPointer) {
+        if (g_pGlobalState->topEdgeSnap)
+            g_pGlobalState->topEdgeSnap->cancelPointer();
+        onTouchUp(ITouch::SUpEvent{.timeMs = event.timeMs, .touchID = event.touchID}, info);
+    } else if (m_dragPending)
+        finishDrag(info, true, event.touchID, false);
+    else {
+        m_touchActive = false;
+        m_dragWindow.reset();
+        m_touchMonitor.reset();
+    }
+}
+
 Vector2D CCSDManager::tabletPosition(const SP<CTablet>& tablet, const Vector2D& normalized) {
     if (!tablet)
         return g_pInputManager->getMouseCoordsInternal();
@@ -624,9 +653,11 @@ PHLWINDOW CCSDManager::csdTitlebarAt(const Vector2D& position) const {
     return VECINRECT(local, 0, 0, box.w, std::min<double>(box.h, g_pGlobalState->config.csdTitlebarHeight->value())) ? window : nullptr;
 }
 
-void CCSDManager::releaseEmulatedStylus(uint32_t timeMs) {
+void CCSDManager::releaseEmulatedStylus(uint32_t timeMs, bool snap) {
     if (!m_emulatingStylus)
         return;
+    if (!snap && g_pGlobalState->topEdgeSnap)
+        g_pGlobalState->topEdgeSnap->cancelPointer();
     g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
     m_emulatingStylus = false;
     m_stylusTool.reset();
@@ -665,6 +696,7 @@ void CCSDManager::onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& in
         m_stylusTool         = event.tool;
         m_stylusCSDWindow    = csdWindow;
         m_stylusGrabOffset   = position - csdWindow->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        m_stylusDownPosition = position;
         m_stylusCSDActive    = true;
         m_stylusCSDDragging  = false;
         m_stylusWindowMoved  = false;
@@ -678,7 +710,7 @@ void CCSDManager::onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& in
             tabletPosition(event.tablet, event.tip);
             g_pInputManager->simulateMouseMovement();
         }
-        releaseEmulatedStylus(event.timeMs);
+        releaseEmulatedStylus(event.timeMs, true);
         info.cancelled = true;
         return;
     }
@@ -690,6 +722,10 @@ void CCSDManager::onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& in
         if (const auto window = m_stylusCSDWindow.lock())
             (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
     }
+    const auto release = event.tablet && !event.tablet->m_relativeInput ? tabletPosition(event.tablet, event.tip) : g_pInputManager->getMouseCoordsInternal();
+    if (m_stylusWindowMoved && TopEdgePolicy::moved(m_stylusDownPosition.x, m_stylusDownPosition.y, release.x, release.y) && g_pGlobalState->topEdgeSnap)
+        g_pGlobalState->topEdgeSnap->finish(m_stylusCSDWindow.lock(), release);
+
     m_stylusCSDWindow.reset();
     m_stylusCSDActive    = false;
     m_stylusCSDDragging  = false;
