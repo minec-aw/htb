@@ -5,6 +5,7 @@
 #include <hyprland/src/helpers/signal/Signal.hpp>
 #include <hyprland/src/devices/IPointer.hpp>
 #include <hyprland/src/devices/ITouch.hpp>
+#include <hyprland/src/devices/Tablet.hpp>
 
 #include <functional>
 #include <unordered_map>
@@ -44,6 +45,9 @@ class CCSDManager {
     CHyprSignalListener                                       m_touchDown;
     CHyprSignalListener                                       m_touchMove;
     CHyprSignalListener                                       m_touchUp;
+    CHyprSignalListener                                       m_tabletAxis;
+    CHyprSignalListener                                       m_tabletTip;
+    CHyprSignalListener                                       m_tabletProximity;
 
     PHLWINDOWREF                                              m_dragWindow;
     Vector2D                                                  m_dragOrigin;
@@ -57,6 +61,10 @@ class CCSDManager {
     bool                                                      m_touchActive          = false;
     bool                                                      m_clientTouchCancelled = false;
     bool                                                      m_emulatingPointer     = false;
+    bool                                                      m_emulatingStylus      = false;
+    SP<Aquamarine::ITabletTool>                               m_stylusTool;
+    SP<CTablet>                                               m_stylusTablet;
+    Vector2D                                                  m_stylusNormalized;
 
     void                                                      unregisterWindow(Desktop::View::CWindow* window);
     void                                                      applySuppression(const PHLWINDOW& window);
@@ -75,4 +83,11 @@ class CCSDManager {
     void                                                      onTouchDown(ITouch::SDownEvent event, Event::SCallbackInfo& info);
     void                                                      onTouchMove(ITouch::SMotionEvent event, Event::SCallbackInfo& info);
     void                                                      onTouchUp(ITouch::SUpEvent event, Event::SCallbackInfo& info);
+    void                                                      onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& info);
+    void                                                      onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& info);
+    void                                                      onTabletProximity(CTablet::SProximityEvent event, Event::SCallbackInfo& info);
+
+    Vector2D                                                  tabletPosition(const SP<CTablet>& tablet, const Vector2D& normalized);
+    bool                                                      overManagedTitlebar(const Vector2D& position) const;
+    void                                                      releaseEmulatedStylus(uint32_t timeMs);
 };

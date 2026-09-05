@@ -80,7 +80,8 @@ plugin:hyprtouchbar {
     button_hover_color = rgba(ffffff33)
     close_hover_color = rgb(e5484d)
 
-    # CSD handling
+    # Touchscreen and stylus handling
+    stylus_drag_enabled = true
     csd_detection = auto
     csd_drag_enabled = true
     csd_touch_emulation = true
@@ -152,7 +153,9 @@ windowrule {
 
 Other dynamic rule effects are `hyprtouchbar:bar_color` and `hyprtouchbar:title_color`.
 
-## CSD dragging notes
+## Touch and stylus dragging notes
+
+With `stylus_drag_enabled = true`, a pen tip over a plugin titlebar—or over the configured top portion of a detected CSD window—is routed through the same pointer path used by Linux caption controls. Motion follows the tablet's output and active-area mapping. Stylus input outside titlebars remains native tablet input, including pressure and tilt.
 
 With `csd_touch_emulation = true` (the default), touches in the top `csd_titlebar_height` pixels are forwarded to the client as pointer input rather than being turned directly into a window drag. Chromium and Qt therefore perform their own exact hit testing: tabs reorder/detach, navigation buttons click, and only genuinely draggable regions issue `xdg_toplevel.move`. The region is an input-compatibility scope, not a forced drag overlay.
 

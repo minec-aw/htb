@@ -188,6 +188,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(buttonIconTheme, CStringValue, "button_icon_theme", "Icon theme for Linux caption controls", "Adwaita");
     ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "Shell command run on titlebar double click", "hyprctl dispatch fullscreenstate 1 2");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
+    ADD_CONFIG(stylusDragEnabled, CBoolValue, "stylus_drag_enabled", "Forward stylus tip input through titlebar pointer handling", true);
     ADD_CONFIG(csdDragEnabled, CBoolValue, "csd_drag_enabled", "Enable touch interaction with CSD titlebars", true);
     ADD_CONFIG(csdTouchEmulation, CBoolValue, "csd_touch_emulation", "Forward CSD titlebar touch as pointer input for client-side hit testing", true);
     ADD_CONFIG(csdDragFallback, CBoolValue, "csd_drag_fallback", "Enable the approximate top-strip fallback", false);
@@ -213,7 +214,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.3.3"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.4.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

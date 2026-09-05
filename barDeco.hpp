@@ -47,6 +47,7 @@ class CHyprBar : public IHyprWindowDecoration {
     virtual std::string                getDisplayName();
 
     PHLWINDOW                          getOwner();
+    bool                               containsPoint(const Vector2D& global);
 
     void                               updateRules();
     void                               onConfigReloaded();

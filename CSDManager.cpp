@@ -1,4 +1,5 @@
 #include "CSDManager.hpp"
+#include "barDeco.hpp"
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
@@ -28,6 +29,7 @@
 
 #include <linux/input-event-codes.h>
 
+#include <cmath>
 #include <format>
 
 namespace {
@@ -141,6 +143,10 @@ CCSDManager::CCSDManager() {
     m_touchDown   = Event::bus()->m_events.input.touch.down.listen([this](ITouch::SDownEvent event, Event::SCallbackInfo& info) { onTouchDown(event, info); });
     m_touchMove   = Event::bus()->m_events.input.touch.motion.listen([this](ITouch::SMotionEvent event, Event::SCallbackInfo& info) { onTouchMove(event, info); });
     m_touchUp     = Event::bus()->m_events.input.touch.up.listen([this](ITouch::SUpEvent event, Event::SCallbackInfo& info) { onTouchUp(event, info); });
+    m_tabletAxis  = Event::bus()->m_events.input.tablet.axis.listen([this](CTablet::SAxisEvent event, Event::SCallbackInfo& info) { onTabletAxis(event, info); });
+    m_tabletTip   = Event::bus()->m_events.input.tablet.tip.listen([this](CTablet::STipEvent event, Event::SCallbackInfo& info) { onTabletTip(event, info); });
+    m_tabletProximity =
+        Event::bus()->m_events.input.tablet.proximity.listen([this](CTablet::SProximityEvent event, Event::SCallbackInfo& info) { onTabletProximity(event, info); });
 
     for (const auto& window : Desktop::windowState()->windows())
         registerWindow(window);
@@ -154,6 +160,8 @@ CCSDManager::~CCSDManager() {
             hooks.xdgResource->setMove(std::move(hooks.originalMove));
     }
 
+    if (m_emulatingStylus)
+        releaseEmulatedStylus(0);
     if (m_emulatingPointer)
         g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = 0, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
 
@@ -449,7 +457,7 @@ void CCSDManager::finishDrag(Event::SCallbackInfo& info, bool touch, int touchID
 }
 
 void CCSDManager::onMouseButton(IPointer::SButtonEvent event, Event::SCallbackInfo& info) {
-    if (m_emulatingPointer || event.button != BTN_LEFT)
+    if (m_emulatingPointer || m_emulatingStylus || event.button != BTN_LEFT)
         return;
     if (event.state == WL_POINTER_BUTTON_STATE_PRESSED) {
         if (g_pGlobalState->config.csdDragFallback->value())
@@ -459,7 +467,7 @@ void CCSDManager::onMouseButton(IPointer::SButtonEvent event, Event::SCallbackIn
 }
 
 void CCSDManager::onMouseMove(const Vector2D&, Event::SCallbackInfo& info) {
-    if (!m_emulatingPointer)
+    if (!m_emulatingPointer && !m_emulatingStylus)
         updateDrag(info, g_pInputManager->getMouseCoordsInternal(), false, 0);
 }
 
@@ -546,4 +554,103 @@ void CCSDManager::onTouchUp(ITouch::SUpEvent event, Event::SCallbackInfo& info) 
         m_dragWindow.reset();
         m_touchMonitor.reset();
     }
+}
+
+Vector2D CCSDManager::tabletPosition(const SP<CTablet>& tablet, const Vector2D& normalized) {
+    if (!tablet)
+        return g_pInputManager->getMouseCoordsInternal();
+
+    auto mapped = normalized;
+    if (!tablet->m_activeArea.empty()) {
+        if (!std::isnan(mapped.x))
+            mapped.x = (mapped.x - tablet->m_activeArea.x) / (tablet->m_activeArea.w - tablet->m_activeArea.x);
+        if (!std::isnan(mapped.y))
+            mapped.y = (mapped.y - tablet->m_activeArea.y) / (tablet->m_activeArea.h - tablet->m_activeArea.y);
+    }
+    Pointer::mgr()->warpAbsolute(mapped, tablet);
+    return g_pInputManager->getMouseCoordsInternal();
+}
+
+bool CCSDManager::overManagedTitlebar(const Vector2D& position) const {
+    for (const auto& bar : g_pGlobalState->bars) {
+        if (bar && bar->containsPoint(position))
+            return true;
+    }
+
+    Desktop::CViewHitTester hitTester{*Desktop::viewState()};
+    const auto              window = hitTester.windowAt(position, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+    if (!window || !validMapped(window) || !windowHasCSD(window))
+        return false;
+
+    const auto box   = window->geometricBox(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+    const auto local = position - box.pos();
+    return VECINRECT(local, 0, 0, box.w, std::min<double>(box.h, g_pGlobalState->config.csdTitlebarHeight->value()));
+}
+
+void CCSDManager::releaseEmulatedStylus(uint32_t timeMs) {
+    if (!m_emulatingStylus)
+        return;
+    g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_RELEASED, .mouse = false}, nullptr);
+    m_emulatingStylus = false;
+    m_stylusTool.reset();
+    m_stylusTablet.reset();
+}
+
+void CCSDManager::onTabletTip(CTablet::STipEvent event, Event::SCallbackInfo& info) {
+    if (!g_pGlobalState->config.stylusDragEnabled->value())
+        return;
+
+    if (event.in) {
+        if (m_emulatingStylus || m_emulatingPointer)
+            return;
+
+        m_stylusTablet      = event.tablet;
+        m_stylusNormalized  = event.tip;
+        const auto position = event.tablet->m_relativeInput ? g_pInputManager->getMouseCoordsInternal() : tabletPosition(event.tablet, event.tip);
+        if (!overManagedTitlebar(position)) {
+            m_stylusTablet.reset();
+            return;
+        }
+
+        m_emulatingStylus = true;
+        m_stylusTool      = event.tool;
+        g_pInputManager->refocus();
+        g_pInputManager->onMouseButton(IPointer::SButtonEvent{.timeMs = event.timeMs, .button = BTN_LEFT, .state = WL_POINTER_BUTTON_STATE_PRESSED, .mouse = false}, nullptr);
+        info.cancelled = true;
+        return;
+    }
+
+    if (!m_emulatingStylus || event.tool != m_stylusTool)
+        return;
+
+    if (event.tablet && !event.tablet->m_relativeInput) {
+        m_stylusNormalized = event.tip;
+        tabletPosition(event.tablet, event.tip);
+        g_pInputManager->simulateMouseMovement();
+    }
+    releaseEmulatedStylus(event.timeMs);
+    info.cancelled = true;
+}
+
+void CCSDManager::onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& info) {
+    if (!m_emulatingStylus || event.tool != m_stylusTool || !event.tablet)
+        return;
+
+    if (event.tablet->m_relativeInput)
+        Pointer::mgr()->move({std::isnan(event.axisDelta.x) ? 0.0 : event.axisDelta.x, std::isnan(event.axisDelta.y) ? 0.0 : event.axisDelta.y});
+    else {
+        if ((event.updatedAxes & CTablet::HID_TABLET_TOOL_AXIS_X) && !std::isnan(event.axis.x))
+            m_stylusNormalized.x = event.axis.x;
+        if ((event.updatedAxes & CTablet::HID_TABLET_TOOL_AXIS_Y) && !std::isnan(event.axis.y))
+            m_stylusNormalized.y = event.axis.y;
+        tabletPosition(event.tablet, m_stylusNormalized);
+    }
+
+    g_pInputManager->simulateMouseMovement();
+    info.cancelled = true;
+}
+
+void CCSDManager::onTabletProximity(CTablet::SProximityEvent event, Event::SCallbackInfo&) {
+    if (m_emulatingStylus && event.tool == m_stylusTool && !event.in)
+        releaseEmulatedStylus(event.timeMs);
 }

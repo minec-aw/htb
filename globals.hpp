@@ -53,9 +53,9 @@ struct SGlobalState {
         SP<Config::Values::CIntValue>        appIconSize, buttonIconSize;
         SP<Config::Values::CIntValue>        csdTitlebarHeight, csdControlsLeft, csdControlsRight, csdDragThreshold;
         SP<Config::Values::CBoolValue>       barBlur, barTitleEnabled, barPartOfWindow, barPrecedenceOverBorder, enabled, iconOnHover;
-        SP<Config::Values::CBoolValue>       builtinButtons, showClose, showMaximize, showMinimize, showAppIcon, csdDragEnabled, csdTouchEmulation, csdDragFallback;
-        SP<Config::Values::CStringValue>     barTextFont, barTextAlign, barButtonsAlignment, appIconTheme, buttonIconTheme, onDoubleClick;
-        SP<Config::Values::CStringValue>     csdDetection, minimizeAction, maximizeAction, closeAction;
+        SP<Config::Values::CBoolValue>   builtinButtons, showClose, showMaximize, showMinimize, showAppIcon, stylusDragEnabled, csdDragEnabled, csdTouchEmulation, csdDragFallback;
+        SP<Config::Values::CStringValue> barTextFont, barTextAlign, barButtonsAlignment, appIconTheme, buttonIconTheme, onDoubleClick;
+        SP<Config::Values::CStringValue> csdDetection, minimizeAction, maximizeAction, closeAction;
     } config;
 };
 

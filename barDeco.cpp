@@ -141,15 +141,17 @@ bool CHyprBar::inputIsValid() {
 }
 
 void CHyprBar::onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent e) {
-    if (!inputIsValid())
-        return;
-
     if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
-        handleUpEvent(info);
+        // A drag commonly ends outside the titlebar. Always finish a gesture
+        // this decoration started instead of leaving mouse/stylus move mode
+        // armed because the release point no longer passes hit testing.
+        if (m_bDragPending || m_bDraggingThis || m_bCancelledDown)
+            handleUpEvent(info);
         return;
     }
 
-    handleDownEvent(info, std::nullopt);
+    if (inputIsValid())
+        handleDownEvent(info, std::nullopt);
 }
 
 void CHyprBar::onTouchDown(Event::SCallbackInfo& info, ITouch::SDownEvent e) {
@@ -792,6 +794,13 @@ CBox CHyprBar::assignedBoxGlobal() {
 
 PHLWINDOW CHyprBar::getOwner() {
     return m_pWindow.lock();
+}
+
+bool CHyprBar::containsPoint(const Vector2D& global) {
+    if (!g_pGlobalState->config.enabled->value() || shouldHide() || !validMapped(m_pWindow))
+        return false;
+    const auto box = assignedBoxGlobal();
+    return VECINRECT(global, box.x, box.y, box.x + box.w, box.y + box.h);
 }
 
 void CHyprBar::updateRules() {
