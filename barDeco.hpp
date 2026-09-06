@@ -74,7 +74,7 @@ class CHyprBar : public IHyprWindowDecoration {
     std::optional<CHyprColor> m_bForcedBarColor;
     std::optional<CHyprColor> m_bForcedTitleColor;
 
-    Time::steady_tp           m_lastMouseDown = Time::steadyNow();
+    std::optional<Time::steady_tp> m_lastMouseDown;
 
     PHLANIMVAR<CHyprColor>    m_cRealBarColor;
 

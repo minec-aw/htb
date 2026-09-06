@@ -45,6 +45,11 @@ Automated scenarios:
 - Optional `maximize_mode = native` compatibility behavior.
 - Unloading while desktop-maximized restores geometry, decorations and client
   state instead of leaving a client-only maximized window behind.
+- Overlapping plugin titlebars: touch taps and drags reach only the topmost
+  window, including when a lower window's maximize hit target overlaps plain
+  title area above it. Mouse/stylus hit testing uses the same z-order.
+- A first tap immediately after opening a window is not misclassified as the
+  second half of a double-click.
 - With deliberately slow move animations enabled: finger titlebar, native CSD
   touch and stylus moves immediately reach their position goals (with native
   coordinate rounding), including returning inside the initial drag threshold.

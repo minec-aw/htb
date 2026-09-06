@@ -5,7 +5,7 @@
 }:
 hyprlandPlugins.mkHyprlandPlugin {
   pluginName = "hyprtouchbar";
-  version = "1.6.3";
+  version = "1.6.4";
   src = ./.;
 
   inherit (hyprland) nativeBuildInputs;

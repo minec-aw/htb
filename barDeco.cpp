@@ -125,10 +125,7 @@ bool CHyprBar::inputIsValid() {
 
     const auto              WINDOWATCURSOR = hitTester.windowAt(MOUSE, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
 
-    auto                    focusState = Desktop::focusState();
-    auto                    window     = focusState->window();
-
-    if (WINDOWATCURSOR != m_pWindow && m_pWindow != window)
+    if (WINDOWATCURSOR != m_pWindow)
         return false;
 
     PHLLS    foundSurface = nullptr;
@@ -162,6 +159,9 @@ void CHyprBar::onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent 
 }
 
 void CHyprBar::onTouchDown(Event::SCallbackInfo& info, ITouch::SDownEvent e) {
+    if (info.cancelled)
+        return;
+
     // Touch IDs are not guaranteed to start at zero (notably under nested
     // compositors). Track whichever finger starts the drag instead. Do not use
     // inputIsValid() here: it intentionally checks mouse coordinates, which
@@ -185,6 +185,22 @@ void CHyprBar::onTouchDown(Event::SCallbackInfo& info, ITouch::SDownEvent e) {
     const auto touch = monitor->m_position + e.pos * monitor->m_size;
     const auto box   = assignedBoxGlobal();
     if (!VECINRECT(touch, box.x, box.y, box.x + box.w, box.y + box.h))
+        return;
+
+    // Every decoration subscribes to the global touch bus. Geometric
+    // containment alone lets a covered titlebar receive a tap through a window
+    // above it. Require the compositor's z-ordered hit test to select our owner.
+    Desktop::CViewHitTester hitTester{*Desktop::viewState()};
+    const auto              topmost = hitTester.windowAt(touch, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+    if (topmost != m_pWindow.lock())
+        return;
+
+    PHLLS    layer = nullptr;
+    Vector2D layerLocal;
+    hitTester.layerSurfaceAt(touch, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &layerLocal, &layer);
+    if (!layer)
+        hitTester.layerSurfaceAt(touch, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &layerLocal, &layer);
+    if (layer)
         return;
 
     handleDownEvent(info, e);
@@ -310,8 +326,8 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     if (doButtonPress(BARPADDING, BARBUTTONPADDING, HEIGHT, COORDS, BUTTONSRIGHT))
         return;
 
-    if (!ON_DOUBLE_CLICK.empty() &&
-        std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
+    if (!ON_DOUBLE_CLICK.empty() && m_lastMouseDown &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - *m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
         if (ON_DOUBLE_CLICK == "maximize")
             runTouchbarAction(PWINDOW, eTouchbarButtonAction::MAXIMIZE);
         else
@@ -832,7 +848,22 @@ bool CHyprBar::containsPoint(const Vector2D& global) {
     if (!g_pGlobalState->config.enabled->value() || shouldHide() || !validMapped(m_pWindow))
         return false;
     const auto box = assignedBoxGlobal();
-    return VECINRECT(global, box.x, box.y, box.x + box.w, box.y + box.h);
+    if (!VECINRECT(global, box.x, box.y, box.x + box.w, box.y + box.h))
+        return false;
+
+    Desktop::CViewHitTester hitTester{*Desktop::viewState()};
+    if (hitTester.windowAt(global, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING) != m_pWindow.lock())
+        return false;
+
+    const auto monitor = m_pWindow->m_monitor.lock();
+    if (!monitor)
+        return false;
+    PHLLS    layer = nullptr;
+    Vector2D layerLocal;
+    hitTester.layerSurfaceAt(global, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &layerLocal, &layer);
+    if (!layer)
+        hitTester.layerSurfaceAt(global, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &layerLocal, &layer);
+    return !layer;
 }
 
 void CHyprBar::updateRules() {

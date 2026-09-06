@@ -11,6 +11,7 @@ It adds server-side titlebars only when an application does not already have cli
 - drag-to-top maximization on release (mouse, touch, and stylus)
 - application icons resolved from desktop files and freedesktop icon themes
 - large built-in close, maximize, and minimize targets
+- occlusion-aware titlebar input: covered windows never receive taps or drags
 - translucent active/inactive colors, blur, rounded hover states, and modern defaults
 - per-window rules to fix applications that report their decoration mode incorrectly
 

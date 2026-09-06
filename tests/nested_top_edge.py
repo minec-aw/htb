@@ -111,6 +111,37 @@ exec-once = alacritty --class htb-regression
             input_(finish)
 
         original = reset()
+        dispatch("exec", "alacritty --class htb-overlap")
+        wait_for(lambda: client("htb-overlap"))
+        overlap = client("htb-overlap")
+        dispatch("focuswindow", "address:" + overlap["address"])
+        if not overlap["floating"]:
+            dispatch("togglefloating")
+        dispatch("resizewindowpixel", "exact 500 200,address:" + overlap["address"])
+        dispatch("movewindowpixel", "exact 300 230,address:" + overlap["address"])
+        # Both plugin bars occupy y=188..230. x=650 is the background
+        # window's maximize hit target but plain title area on the top window.
+        before = client()
+        input_("touch-down", 650, 210, 41)
+        input_("touch-up", 0, 0, 41)
+        assert client()["fullscreenClient"] == 0 and client()["at"] == before["at"], client()
+        assert json.loads(ctl("activewindow", "-j"))["class"] == "htb-overlap"
+        print("PASS overlapping titlebar tap reaches only the topmost window")
+
+        before_back = client()
+        before_front = client("htb-overlap")
+        input_("touch-down", 400, 210, 42)
+        input_("touch-move", 500, 310, 42)
+        input_("touch-up", 0, 0, 42)
+        assert client()["at"] == before_back["at"] and client()["fullscreenClient"] == 0, client()
+        assert client("htb-overlap")["at"] != before_front["at"], client("htb-overlap")
+        print("PASS overlapping titlebar drag moves only the topmost window")
+        dispatch("focuswindow", "address:" + client("htb-overlap")["address"])
+        dispatch("killactive")
+        wait_for(lambda: not client("htb-overlap"))
+        dispatch("focuswindow", "address:" + original["address"])
+
+        original = reset()
         mouse_drag(4)
         assert_maximized()
         input_("restore")
