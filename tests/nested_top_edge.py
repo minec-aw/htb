@@ -274,10 +274,19 @@ exec-once = alacritty --class htb-regression
         assert client()["at"] == first["at"] and client()["size"] == first["size"]
         input_("client-unmaximize")
         assert_normal()
-        input_("expect-client-normal")
+        # Normal compositor state, but preserve Hyprland's wire decoration hint.
+        input_("expect-client-maximized")
         input_("expect-rounded")
         assert client()["at"] == original["at"] and client()["size"] == original["size"], client()
-        print("PASS desktop maximize is non-exclusive, square, idempotent, and restores geometry/decorations")
+        print("PASS desktop maximize is non-exclusive, square, explicit set is idempotent, and restore preserves the compatibility hint")
+        # With that hint, a real caption button sends unset even when the
+        # compositor considers the window normal. Preserve the native toggle.
+        input_("client-unmaximize")
+        assert_maximized()
+        input_("client-unmaximize")
+        assert_normal()
+        assert client()["size"] == original["size"]
+        print("PASS hinted CSD unset requests toggle actual maximize/restore")
 
         input_("client-maximize")
         input_("fullscreen")

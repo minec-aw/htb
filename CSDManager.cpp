@@ -224,8 +224,23 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
                     return;
                 if (!g_pGlobalState->config.maximizeAction->value().empty())
                     runTouchbarAction(window, eTouchbarButtonAction::MAXIMIZE);
-                else if (g_pGlobalState->maximizeManager)
-                    g_pGlobalState->maximizeManager->set(window, enabled);
+                else if (g_pGlobalState->maximizeManager) {
+                    // Stock Hyprland advertises maximized even on normal
+                    // windows to suppress CSD margins. Clients consequently
+                    // send unset_maximized when that caption button is clicked.
+                    // Match native compatibility behavior without forcing the
+                    // window through workspace-fullscreen stacking first.
+                    if (window->m_suppressNextMaximize) {
+                        window->m_suppressNextMaximize = false;
+                        return;
+                    }
+                    const auto modes             = Fullscreen::controller()->getFullscreenModes(window);
+                    const auto surface           = window->m_xdgSurface.lock();
+                    const auto top               = surface ? surface->m_toplevel.lock() : nullptr;
+                    const bool compatibilityHint = top && std::ranges::find(top->m_pendingApply.states, XDG_TOPLEVEL_STATE_MAXIMIZED) != top->m_pendingApply.states.end();
+                    const bool normal            = modes.internal == Fullscreen::FSMODE_NONE && modes.client == Fullscreen::FSMODE_NONE;
+                    g_pGlobalState->maximizeManager->set(window, enabled || (normal && compatibilityHint));
+                }
             };
             top->m_resource->setSetMaximized([maximizeRequest](CXdgToplevel*) { maximizeRequest(true); });
             top->m_resource->setUnsetMaximized([maximizeRequest](CXdgToplevel*) { maximizeRequest(false); });

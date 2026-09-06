@@ -125,7 +125,17 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             const auto top       = w->m_xdgSurface->m_toplevel.lock();
             const bool maximized = std::ranges::find(top->m_pendingApply.states, XDG_TOPLEVEL_STATE_MAXIMIZED) != top->m_pendingApply.states.end();
             if (maximized != (type == "expect-client-maximized"))
-                return {.success = false, .error = "XDG wire maximized state disagrees with window state"};
+                return {.success = false, .error = "unexpected XDG maximized hint"};
+        } else if (type == "clear-csd-hint") {
+            // Reproduce 1.6.0's regression ONLY in the isolated test compositor.
+            const auto w = Desktop::focusState()->window();
+            w->m_xdgSurface->m_toplevel->setMaximized(false);
+        } else if (type == "expect-csd-offset" || type == "expect-no-csd-offset") {
+            const auto w        = Desktop::focusState()->window();
+            const auto geometry = w->m_xdgSurface->m_current.geometry;
+            const bool offset   = geometry.x != 0 || geometry.y != 0;
+            if (offset != (type == "expect-csd-offset"))
+                return {.success = false, .error = std::format("unexpected XDG geometry: {},{} {}x{}", geometry.x, geometry.y, geometry.w, geometry.h)};
         } else if (type == "expect-square") {
             const auto w = Desktop::focusState()->window();
             if (w->getRealBorderSize() != 0 || w->rounding() != 0 || !w->m_ruleApplicator->noShadow().valueOrDefault())

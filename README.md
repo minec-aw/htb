@@ -146,8 +146,9 @@ maximize_action = togglefloating
   mode transfers maximization to the native layout; restoring then returns to
   tiling. The reverse transition uses desktop maximization.
 - CSD requests, built-in buttons, double-click and top-edge snapping share this
-  handling. Repeated `set_maximized`/`unset_maximized` requests are idempotent, and
-  the actual XDG/EWMH maximize state is updated for the client.
+  handling. Explicit `set_maximized` requests are idempotent. On Hyprland 0.56,
+  Wayland caption requests retain the compatibility behavior described below;
+  XWayland's EWMH maximize state tracks the real state.
 - Actual fullscreen (F11) remains native. A desktop-maximized window temporarily
   entering fullscreen returns to its maximized work-area size when it exits.
 - Panel/monitor changes update maximized floating bounds. Unloading the plugin
@@ -169,6 +170,17 @@ in **both** modes.
 In `hyprctl clients`, a desktop-maximized floating window intentionally shows
 `fullscreen: 0, fullscreenClient: 1`. A natively maximized tiled window shows
 `fullscreen: 1, fullscreenClient: 1`; true fullscreen is `2`.
+
+**Hyprland 0.56 decoration compatibility:** core Hyprland deliberately keeps the
+XDG `maximized` wire hint set even for normal windows, suppressing client shadow
+margins that its renderer cannot correctly offset. Hyprtouchbar preserves this
+hint; it is separate from the actual compositor maximize state above. A CSD
+button may therefore send `unset_maximized` on a normal window; like core
+Hyprland, we interpret that as a caption toggle. Apps may show a restore glyph
+even when floating, as under stock Hyprland. Version 1.6.0 incorrectly cleared
+this hint, causing shifted/clipped Chromium content. Version 1.6.1 restores the
+compatibility hint, including for already-affected windows, without renderer
+hooks or border/rounding workarounds.
 
 ## How CSD detection works
 
@@ -259,6 +271,7 @@ Regression tests:
 ```bash
 make test
 python3 tests/nested_top_edge.py
+python3 tests/chromium_geometry.py  # real Helium; or set HTB_BROWSER=chromium
 ```
 
-The second command starts its own nested compositor and injects input **only there**. See [tests/README.md](tests/README.md) for coverage and limitations.
+The Python tests start their own nested compositor and inject input **only there**. See [tests/README.md](tests/README.md) for coverage and limitations.

@@ -27,7 +27,8 @@ Automated scenarios:
 - A CSD gesture without a move request must not maximize.
 - Unload/reload with an existing client, followed by another top-edge drag.
 - Desktop-style floating maximize: internal/client modes `0/1`, no workspace
-  fullscreen claim, and actual XDG maximize/restore state.
+  fullscreen claim, and preservation of the stock XDG decoration hint across
+  maximize/restore (including caption-toggle requests sent because of the hint).
 - Square, borderless, shadowless maximization and restoration of the original
   floating geometry and current frame configuration.
 - Fullscreen/F11 round-trip back to desktop maximization.
@@ -47,6 +48,22 @@ installed move handler with a test-issued seat serial. This tests the gesture
 completion path, **not** a real toolkit's protocol negotiation or serial
 security. Physical device mapping and actual Chromium tab interaction still
 need manual testing.
+
+## Real Chromium geometry regression
+
+`python3 tests/chromium_geometry.py [plugin.so]` uses a real `helium-browser`
+(or `HTB_BROWSER=chromium`) and a temporary profile at **1.875x scale**. It verifies:
+
+1. Stock Hyprland's normal-window XDG hint suppresses geometry offsets.
+2. Clearing just that hint reproduces client geometry margins, as in 1.6.0.
+3. Loading the corrected plugin repairs the already-affected client.
+4. Repeated CSD caption maximize/restore retains zero geometry offsets and the
+   original floating size.
+5. Unload leaves the stock hint and aligned geometry intact.
+
+These are assertions against the real client's committed XDG geometry and
+states, not pixel comparisons. No renderer hooks or user-profile changes are
+used. This complements rather than replaces visual testing.
 
 Manual checks on the real desktop:
 

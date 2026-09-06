@@ -125,11 +125,14 @@ bool CMaximizeManager::isDesktopMaximized(const PHLWINDOW& window) const {
 }
 
 void CMaximizeManager::notifyClient(const PHLWINDOW& window, bool maximized) {
-    // Hyprland 0.56's client-mode bookkeeping does not itself update the XDG
-    // maximized bit (and initially forces it on all mapped toplevels). Keep
-    // the actual wire state honest so clients send set/unset appropriately.
+    // Hyprland 0.56 deliberately keeps the XDG maximized hint set to suppress
+    // client shadow margins: its renderer does NOT account for xdg geometry
+    // offsets. Clearing it (as 1.6.0 did globally) shifts/clips Chromium's
+    // content inside the compositor border. Preserve the compositor's native
+    // compatibility hint, including when repairing a window affected by 1.6.0.
+    // Real maximize/restore state remains in our controller, not this hint.
     if (const auto xdg = window->m_xdgSurface.lock(); xdg && xdg->m_toplevel)
-        xdg->m_toplevel->setMaximized(maximized);
+        xdg->m_toplevel->setMaximized(true);
     else if (const auto x11 = window->m_xwaylandSurface.lock(); x11 && x11->m_maximized != maximized) {
         x11->m_maximized = maximized;
         x11->setFullscreen(x11->m_fullscreen); // publish the updated EWMH state
