@@ -28,6 +28,7 @@
 #include "AppIcon.hpp"
 #include "TopEdgeSnap.hpp"
 #include "MaximizeManager.hpp"
+#include "DragMotion.hpp"
 #include "BarPassElement.hpp"
 
 #include <climits>
@@ -240,7 +241,7 @@ void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
     }
 
     const auto TARGET = COORDS - m_touchGrabOffset;
-    g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", (int)TARGET.x, (int)TARGET.y));
+    DragMotion::moveImmediately(PWINDOW, TARGET);
     m_bDraggingThis = true;
     info.cancelled  = true;
 }

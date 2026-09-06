@@ -144,6 +144,18 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             const auto w = Desktop::focusState()->window();
             if (w->getRealBorderSize() == 0 || w->rounding() == 0 || w->m_ruleApplicator->noShadow().valueOrDefault())
                 return {.success = false, .error = "restored frame still stripped"};
+        } else if (type == "expect-instant-position" || type == "expect-animated-position") {
+            const auto w       = Desktop::focusState()->window();
+            const auto current = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+            const auto goal    = w->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+            const bool settled = (current - goal).size() < 0.001;
+            if (settled != (type == "expect-instant-position"))
+                return {.success = false, .error = "unexpected current/goal position during animation test"};
+        } else if (type == "expect-position") {
+            const auto w      = Desktop::focusState()->window();
+            const auto actual = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+            if ((actual - Vector2D{x, y}).size() > 0.001)
+                return {.success = false, .error = std::format("position {},{} did not follow input {},{}", actual.x, actual.y, x, y)};
         } else if (type == "expect-frame") {
             const auto w = Desktop::focusState()->window();
             if (w->rounding() != x || w->getRealBorderSize() != y)

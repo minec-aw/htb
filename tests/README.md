@@ -41,6 +41,10 @@ Automated scenarios:
 - Optional `maximize_mode = native` compatibility behavior.
 - Unloading while desktop-maximized restores geometry, decorations and client
   state instead of leaving a client-only maximized window behind.
+- With deliberately slow move animations enabled: finger titlebar, native CSD
+  touch and stylus moves immediately reach their position goals (with native
+  coordinate rounding), including returning inside the initial drag threshold.
+  Ordinary move commands still animate after the gesture.
 
 The driver synthesizes events into Hyprland's input paths, not `/dev/uinput`.
 For native CSD request tests it marks the probe client as CSD and calls the

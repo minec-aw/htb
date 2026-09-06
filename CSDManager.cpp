@@ -3,6 +3,7 @@
 #include "TopEdgeSnap.hpp"
 #include "TopEdgePolicy.hpp"
 #include "MaximizeManager.hpp"
+#include "DragMotion.hpp"
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
@@ -470,7 +471,7 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
         return;
     }
 
-    if ((position - m_dragOrigin).size() < g_pGlobalState->config.csdDragThreshold->value())
+    if (!m_dragging && (position - m_dragOrigin).size() < g_pGlobalState->config.csdDragThreshold->value())
         return;
 
     if (touch) {
@@ -497,7 +498,7 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
         }
 
         const auto target = position - m_dragGrabOffset;
-        g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", static_cast<int>(target.x), static_cast<int>(target.y)));
+        DragMotion::moveImmediately(window, target);
         info.cancelled = true;
         return;
     }
@@ -837,7 +838,7 @@ void CCSDManager::onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& 
     }
 
     const auto target = g_pInputManager->getMouseCoordsInternal() - m_stylusGrabOffset;
-    g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", static_cast<int>(target.x), static_cast<int>(target.y)));
+    DragMotion::moveImmediately(window, target);
     info.cancelled = true;
 }
 

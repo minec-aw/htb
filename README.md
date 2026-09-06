@@ -234,6 +234,11 @@ Only completed window-move gestures qualify. Clicking a titlebar button, resizin
 
 ## Touch and stylus dragging notes
 
+Direct finger/stylus window moves follow input immediately, using the same
+position/size warp as Hyprland's native mouse dragging. This does not disable
+normal move, maximize, or workspace animations. The drag threshold applies only
+when starting a drag, not when moving back toward its starting point.
+
 With `stylus_drag_enabled = true`, a pen tip over a plugin titlebar is routed through its pointer-style caption handling. Over a detected CSD window, tablet input remains native until the application identifies the exact pixel as draggable with `xdg_toplevel.move`; the plugin then accepts the tablet-tool serial and tracks the pen directly. Motion follows the tablet's output and active-area mapping. Stylus input outside titlebars remains native, including pressure and tilt.
 
 With `csd_touch_emulation = true` (the default), touches in the top `csd_titlebar_height` pixels are forwarded to the client as pointer input rather than being turned directly into a window drag. Chromium and Qt therefore perform their own exact hit testing: tabs reorder/detach, navigation buttons click, and only genuinely draggable regions issue `xdg_toplevel.move`. The region is an input-compatibility scope, not a forced drag overlay.

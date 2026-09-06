@@ -72,6 +72,9 @@ exec-once = alacritty --class htb-regression
             time.sleep(0.08)
         def input_(kind, x=0, y=0, id_=7):
             dispatch("htb-test.input", f"{kind} {x} {y} {id_}")
+        def animation_enabled():
+            value = json.loads(ctl("getoption", "animations:enabled", "-j"))
+            return bool(value.get("bool", value.get("int", 0)))
         def client(name="htb-regression"):
             return next((w for w in json.loads(ctl("clients", "-j")) if w["class"] == name), None)
         wait_for(client)
@@ -446,6 +449,52 @@ exec-once = alacritty --class htb-regression
         assert client()["floating"]
         assert ctl("keyword", "plugin:hyprtouchbar:maximize_mode", "auto") == "ok"
         print("PASS optional native mode retains layout fullscreen behavior for floating windows")
+
+        # Exaggerated move animation makes any lag obvious in current-vs-goal
+        # assertions. Setup remains nonanimated; only the gestures enable it.
+        assert ctl("keyword", "plugin:hyprtouchbar:csd_detection", "auto") == "ok"
+        assert ctl("keyword", "animation", "windowsMove,1,50,default") == "ok"
+        original = reset()
+        ox, oy = original["at"]
+        assert ctl("keyword", "animations:enabled", "true") == "ok"
+        input_("touch-down", ox + 180, oy - 20)
+        input_("touch-move", ox + 240.25, oy + 40.5)
+        input_("expect-instant-position")
+        input_("expect-position", ox + 60, oy + 61)  # native moveTarget rounding
+        input_("touch-up")
+        assert animation_enabled()
+        dispatch("movewindowpixel", "exact 150 180,address:" + original["address"])
+        input_("expect-animated-position")
+        print("PASS finger titlebar motion is immediate and precise; ordinary move animation still works")
+
+        assert ctl("keyword", "animations:enabled", "false") == "ok"
+        assert ctl("keyword", "plugin:hyprtouchbar:csd_detection", "all") == "ok"
+        assert ctl("keyword", "plugin:hyprtouchbar:csd_touch_emulation", "false") == "ok"
+        original = reset()
+        ox, oy = original["at"]
+        assert ctl("keyword", "animations:enabled", "true") == "ok"
+        input_("touch-down", ox + 100, oy + 20)
+        input_("client-move-request")
+        input_("touch-move", ox + 160.5, oy + 60.25)
+        input_("expect-instant-position")
+        input_("expect-position", ox + 61, oy + 40)
+        input_("touch-move", ox + 101.25, oy + 20.5)
+        input_("expect-position", ox + 1, oy + 1)
+        input_("touch-up")
+        print("PASS native CSD touch tracks immediately, including movement back inside the initial drag threshold")
+
+        assert ctl("keyword", "animations:enabled", "false") == "ok"
+        original = reset()
+        ox, oy = original["at"]
+        assert ctl("keyword", "animations:enabled", "true") == "ok"
+        input_("pen-down", ox + 100, oy + 20)
+        input_("client-move-request")
+        input_("pen-move", ox + 170.125, oy + 100.5)
+        input_("expect-instant-position")
+        input_("expect-position", ox + 70, oy + 81)
+        input_("pen-up", ox + 170.125, oy + 100.5)
+        assert animation_enabled()
+        print("PASS native CSD stylus tracks immediately without changing animation settings")
     except Exception:
         log.flush()
         log.seek(0)
