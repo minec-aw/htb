@@ -1,4 +1,5 @@
 #include "AppIcon.hpp"
+#include "ChromiumCaptionIcons.hpp"
 
 #include <hyprland/src/render/Renderer.hpp>
 
@@ -242,14 +243,11 @@ namespace {
         return target;
     }
 
-    cairo_surface_t* renderSVG(const fs::path& path, int size) {
-        GError*     error  = nullptr;
-        RsvgHandle* handle = rsvg_handle_new_from_file(path.c_str(), &error);
-        if (!handle) {
-            if (error)
-                g_error_free(error);
+    // Consumes the handle for both on-disk theme icons and embedded vectors.
+    cairo_surface_t* renderSVGHandle(RsvgHandle* handle, int size) {
+        GError* error = nullptr;
+        if (!handle)
             return nullptr;
-        }
 
         cairo_surface_t* target = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
         cairo_t*         cairo  = cairo_create(target);
@@ -268,6 +266,10 @@ namespace {
         cairo_destroy(cairo);
         g_object_unref(handle);
         return target;
+    }
+
+    cairo_surface_t* renderSVG(const fs::path& path, int size) {
+        return renderSVGHandle(rsvg_handle_new_from_file(path.c_str(), nullptr), size);
     }
 } // namespace
 
@@ -293,11 +295,18 @@ SP<Render::ITexture> AppIcon::loadNamed(const std::string& iconName, const std::
     if (iconName.empty() || pixelSize < 1)
         return nullptr;
 
-    const auto path = iconPath(iconName, theme, pixelSize);
-    if (!path)
-        return nullptr;
-
-    cairo_surface_t* surface = lower(path->extension().string()) == ".svg" ? renderSVG(*path, pixelSize) : renderPNG(*path, pixelSize);
+    cairo_surface_t* surface = nullptr;
+    if (theme == "chromium") {
+        const auto svg = ChromiumCaptionIcons::svg(iconName, pixelSize);
+        if (svg.empty())
+            return nullptr;
+        surface = renderSVGHandle(rsvg_handle_new_from_data(reinterpret_cast<const guint8*>(svg.data()), svg.size(), nullptr), pixelSize);
+    } else {
+        const auto path = iconPath(iconName, theme, pixelSize);
+        if (!path)
+            return nullptr;
+        surface = lower(path->extension().string()) == ".svg" ? renderSVG(*path, pixelSize) : renderPNG(*path, pixelSize);
+    }
     if (!surface)
         return nullptr;
 

@@ -75,9 +75,10 @@ plugin:hyprtouchbar {
     # Helium Linux-style caption controls
     bar_buttons_alignment = right
     icon_on_hover = false
-    button_icon_theme = Adwaita
-    button_icon_size = 20
+    button_icon_theme = chromium
+    button_icon_size = 12
     button_icon_color = rgb(e8eaed)
+    button_inactive_opacity = 0.38
     button_hover_color = rgba(ffffff33)
     close_hover_color = rgb(e5484d)
 
@@ -106,7 +107,24 @@ plugin:hyprtouchbar {
 }
 ```
 
-The built-in controls load the same freedesktop symbolic icon names Chromium/Helium requests on Linux: `window-minimize-symbolic`, `window-maximize-symbolic`, `window-restore-symbolic`, and `window-close-symbolic`. The maximize glyph automatically changes to restore while maximized. Text glyphs are used only if the selected icon theme does not provide these assets.
+The default controls use **Chromium's original built-in caption vector paths**,
+not Adwaita symbols or font characters. Both the 12px and 24px representations
+are embedded, with Chromium's representation-selection policy for fractional
+and HiDPI scales. The default canvas size is 12 **logical** pixels; these vectors
+have much less internal padding than Adwaita, so this is not equivalent to
+shrinking the old icons. Touch targets and button spacing are unchanged.
+
+Inactive built-in glyphs dim to `button_inactive_opacity` (0.38, as in Chromium),
+and brighten on focus/hover. The maximize glyph switches to the overlapping
+restore icon when maximized. Set `button_icon_theme` to a freedesktop theme such
+as `Adwaita` to keep themed symbolic icons instead; custom text buttons remain
+supported.
+
+If you previously set `button_icon_size = 16` following the old guidance, remove
+that override or set it to **12** to use the browser's default metrics. See
+[the original vector sources and license](third_party/chromium_caption/README.md).
+Helium can use different controls with GTK themes or its newer rounded-icons
+feature; this default targets its classic Chromium/Linux caption design.
 
 `maximize_action` being empty uses `maximize_mode`. Setting an action replaces maximize button behavior with that dispatcher instead. `close_action` behaves similarly for the plugin's server-side close button. The default `on_double_click = maximize` uses the same maximize handler; any other nonempty value remains a shell command.
 

@@ -171,7 +171,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(barButtonPadding, CIntValue, "bar_button_padding", "Space between titlebar buttons", 6);
     ADD_CONFIG(cornerRadius, CIntValue, "corner_radius", "Button corner radius", 6);
     ADD_CONFIG(appIconSize, CIntValue, "app_icon_size", "Application icon size", 24);
-    ADD_CONFIG(buttonIconSize, CIntValue, "button_icon_size", "Linux caption icon size", 20);
+    ADD_CONFIG(buttonIconSize, CIntValue, "button_icon_size", "Caption icon canvas size in logical pixels", 12);
+    ADD_CONFIG(buttonInactiveOpacity, CFloatValue, "button_inactive_opacity", "Inactive caption glyph opacity (0-1)", 0.38F);
     ADD_CONFIG(barTitleEnabled, CBoolValue, "bar_title_enabled", "Show the window title", true);
     ADD_CONFIG(barBlur, CBoolValue, "bar_blur", "Blur translucent titlebars", true);
     ADD_CONFIG(barPartOfWindow, CBoolValue, "bar_part_of_window", "Reserve titlebar space", true);
@@ -187,7 +188,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(barTextAlign, CStringValue, "bar_text_align", "Title alignment: left or center", "left");
     ADD_CONFIG(barButtonsAlignment, CStringValue, "bar_buttons_alignment", "Button alignment: left or right", "right");
     ADD_CONFIG(appIconTheme, CStringValue, "app_icon_theme", "Freedesktop icon theme name", "hicolor");
-    ADD_CONFIG(buttonIconTheme, CStringValue, "button_icon_theme", "Icon theme for Linux caption controls", "Adwaita");
+    ADD_CONFIG(buttonIconTheme, CStringValue, "button_icon_theme", "chromium for embedded caption vectors, or a freedesktop icon theme", "chromium");
     ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "maximize for built-in toggle, or a shell command on titlebar double click", "maximize");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
     ADD_CONFIG(stylusDragEnabled, CBoolValue, "stylus_drag_enabled", "Forward stylus tip input through titlebar pointer handling", true);
@@ -221,7 +222,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.6.2"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.6.3"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

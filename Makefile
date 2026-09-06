@@ -25,8 +25,13 @@ meson-build:
 	mkdir -p build
 	cd build && meson .. && ninja
 
-test:
+test: test-captions
 	@bin=$$(mktemp /tmp/htb-policy-test.XXXXXX); trap 'rm -f "$$bin"' EXIT; \
 	$(CXX) -std=c++23 -Wall -Wextra -Werror -I. tests/top_edge_policy.cpp -o "$$bin" && "$$bin"
 
-.PHONY: all meson-build clean test
+test-captions:
+	python3 tools/generate_caption_icons.py --check
+	@bin=$$(mktemp /tmp/htb-caption-test.XXXXXX); trap 'rm -f "$$bin"' EXIT; \
+	$(CXX) -std=c++23 -Wall -Wextra -Werror -I. tests/caption_icons.cpp $$(pkg-config --cflags --libs librsvg-2.0) -o "$$bin" && "$$bin"
+
+.PHONY: all meson-build clean test test-captions

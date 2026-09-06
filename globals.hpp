@@ -4,6 +4,7 @@
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/config/values/types/BoolValue.hpp>
 #include <hyprland/src/config/values/types/IntValue.hpp>
+#include <hyprland/src/config/values/types/FloatValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/config/values/types/ColorValue.hpp>
 #include <hyprland/src/config/values/types/FontWeightValue.hpp>
@@ -57,6 +58,7 @@ struct SGlobalState {
         SP<Config::Values::CBoolValue>       topEdgeMaximize;
         SP<Config::Values::CIntValue>        topEdgeDistance;
         SP<Config::Values::CIntValue>        appIconSize, buttonIconSize;
+        SP<Config::Values::CFloatValue>      buttonInactiveOpacity;
         SP<Config::Values::CIntValue>        csdTitlebarHeight, csdControlsLeft, csdControlsRight, csdDragThreshold;
         SP<Config::Values::CBoolValue>       barBlur, barTitleEnabled, barPartOfWindow, barPrecedenceOverBorder, enabled, iconOnHover;
         SP<Config::Values::CBoolValue>   builtinButtons, showClose, showMaximize, showMinimize, showAppIcon, stylusDragEnabled, csdDragEnabled, csdTouchEmulation, csdDragFallback;

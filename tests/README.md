@@ -1,8 +1,12 @@
 # Maximization and top-edge regression tests
 
-`make test` builds a standalone C++ policy test without Hyprland. It covers the
-release zone, clicks/jitter, threshold boundaries, negative monitor offsets,
-adjacent outputs, logical versus physical coordinates, and invalid input.
+`make test` builds standalone C++ tests without Hyprland. The top-edge policy
+test covers the release zone, clicks/jitter, threshold boundaries, negative
+monitor offsets, adjacent outputs, logical versus physical coordinates, and
+invalid input. Caption tests verify that generated SVGs match the vendored
+Chromium paths, choose the correct 12/24px representation, and rasterize with
+expected stroke areas and transparent holes. Caption tests require librsvg/Cairo
+(the same dependencies as the plugin). Run them alone with `make test-captions`.
 
 `python3 tests/nested_top_edge.py [plugin.so]` builds `input-driver.cpp` into a
 temporary **test-only** plugin and starts a separate nested Hyprland. Requires

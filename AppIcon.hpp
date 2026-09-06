@@ -10,7 +10,7 @@ namespace AppIcon {
     // freedesktop icon theme, then upload it as a Hyprland texture.
     SP<Render::ITexture> load(const std::string& appClass, const std::string& initialClass, const std::string& theme, int pixelSize);
 
-    // Load one of the freedesktop symbolic icons used by Chromium's Linux
-    // caption buttons and tint it like GTK does.
+    // Load an embedded Chromium caption vector (theme "chromium"), or a
+    // freedesktop symbolic theme icon, and tint its alpha mask.
     SP<Render::ITexture> loadNamed(const std::string& iconName, const std::string& theme, int pixelSize, const CHyprColor& tint);
 }

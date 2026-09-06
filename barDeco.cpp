@@ -442,7 +442,7 @@ void CHyprBar::updateAppIcon(const float scale) {
 SP<Render::ITexture> CHyprBar::builtinButtonIcon(eTouchbarButtonAction action, const float scale) {
     const auto THEME     = g_pGlobalState->config.buttonIconTheme->value();
     const auto COLOR     = g_pGlobalState->config.buttonIconColor->value();
-    const int  PIXELSIZE = std::max(1, static_cast<int>(std::round(g_pGlobalState->config.buttonIconSize->value() * scale)));
+    const int  PIXELSIZE = static_cast<int>(std::ceil(std::clamp<double>(g_pGlobalState->config.buttonIconSize->value() * scale, 1.0, 256.0)));
 
     if (THEME != m_szLastButtonIconTheme || COLOR != m_iLastButtonIconColor || PIXELSIZE != m_iLastButtonIconSize) {
         m_szLastButtonIconTheme = THEME;
@@ -572,12 +572,14 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         if (!iconTex || iconTex->m_texID == 0)
             continue;
 
-        const auto iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - iconTex->m_size.x / 2.0;
-        const auto iconY = barBox->y + barBox->height / 2.0 - iconTex->m_size.y / 2.0;
-        CBox       pos   = {iconX, iconY, iconTex->m_size.x, iconTex->m_size.y};
+        const auto  iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - iconTex->m_size.x / 2.0;
+        const auto  iconY = barBox->y + barBox->height / 2.0 - iconTex->m_size.y / 2.0;
+        CBox        pos   = {iconX, iconY, iconTex->m_size.x, iconTex->m_size.y};
 
+        const float inactiveOpacity = std::clamp<float>(g_pGlobalState->config.buttonInactiveOpacity->value(), 0.F, 1.F);
+        const float iconAlpha       = button.action == eTouchbarButtonAction::CUSTOM || m_bWindowHasFocus || hovering ? a : a * inactiveOpacity;
         if (!ICONONHOVER || hovering)
-            g_pHyprOpenGL->renderTexture(iconTex, pos, {.a = a});
+            g_pHyprOpenGL->renderTexture(iconTex, pos, {.a = iconAlpha});
         offset += scaledButtonsPad + scaledButtonSize;
 
         bool currentBit = (m_iButtonHoverState & (1 << i)) != 0;
