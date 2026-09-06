@@ -2,6 +2,7 @@
 #include "barDeco.hpp"
 #include "TopEdgeSnap.hpp"
 #include "TopEdgePolicy.hpp"
+#include "MaximizeManager.hpp"
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
@@ -131,8 +132,8 @@ void runTouchbarAction(const PHLWINDOW& window, eTouchbarButtonAction action, co
                 return;
             }
 
-            const auto current = Fullscreen::controller()->getFullscreenModes(window).client;
-            Fullscreen::controller()->setFullscreenMode(window, std::nullopt, current == Fullscreen::FSMODE_MAXIMIZED ? Fullscreen::FSMODE_NONE : Fullscreen::FSMODE_MAXIMIZED);
+            if (g_pGlobalState->maximizeManager)
+                g_pGlobalState->maximizeManager->toggle(window);
             return;
         }
     }
@@ -140,6 +141,7 @@ void runTouchbarAction(const PHLWINDOW& window, eTouchbarButtonAction action, co
 
 CCSDManager::CCSDManager() {
     m_windowOpen    = Event::bus()->m_events.window.open.listen([this](PHLWINDOW window) { registerWindow(window); });
+    m_windowClose   = Event::bus()->m_events.window.close.listen([this](PHLWINDOW window) { unregisterWindow(window.get()); });
     m_windowDestroy = Event::bus()->m_events.window.destroy.listen([this](PHLWINDOWREF window) {
         if (const auto locked = window.lock())
             unregisterWindow(locked.get());
@@ -164,8 +166,11 @@ CCSDManager::~CCSDManager() {
     // Put Hyprland's original xdg_toplevel.move handlers back before this
     // plugin's code is unloaded.
     for (auto& [window, hooks] : m_windows) {
-        if (hooks.moveOverridden && hooks.xdgResource)
+        if (hooks.moveOverridden && hooks.xdgResource) {
             hooks.xdgResource->setMove(std::move(hooks.originalMove));
+            hooks.xdgResource->setSetMaximized(std::move(hooks.originalMaximize));
+            hooks.xdgResource->setUnsetMaximized(std::move(hooks.originalUnmaximize));
+        }
     }
 
     if (m_emulatingStylus)
@@ -184,17 +189,18 @@ CCSDManager::~CCSDManager() {
             (void)Config::Actions::pinWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE, window);
     }
 
-    for (auto& [window, hooks] : m_windows) {
-        if (hooks.ownsMaxSuppression)
+    for (auto& [key, hooks] : m_windows) {
+        if (const auto window = hooks.window.lock(); window && hooks.ownsMaxSuppression)
             window->m_suppressedEvents &= ~Desktop::View::SUPPRESS_MAXIMIZE;
     }
 }
 
 void CCSDManager::registerWindow(const PHLWINDOW& window) {
-    if (!window)
+    if (!validMapped(window))
         return;
 
-    auto& hooks = m_windows[window.get()];
+    auto& hooks  = m_windows[window.get()];
+    hooks.window = window;
     applySuppression(window);
     if (hooks.listening)
         return;
@@ -208,8 +214,21 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
         // serials. Touch-down and tablet-tool-down serials are valid implicit
         // grabs too, so retain native pointer handling and add validated paths.
         if (top->m_resource) {
-            hooks.xdgResource  = top->m_resource;
-            hooks.originalMove = top->m_resource->requests.move;
+            hooks.xdgResource        = top->m_resource;
+            hooks.originalMove       = top->m_resource->requests.move;
+            hooks.originalMaximize   = top->m_resource->requests.setMaximized;
+            hooks.originalUnmaximize = top->m_resource->requests.unsetMaximized;
+            auto maximizeRequest     = [weak](bool enabled) {
+                const auto window = weak.lock();
+                if (!validMapped(window) || (window->m_suppressedEvents & Desktop::View::SUPPRESS_MAXIMIZE))
+                    return;
+                if (!g_pGlobalState->config.maximizeAction->value().empty())
+                    runTouchbarAction(window, eTouchbarButtonAction::MAXIMIZE);
+                else if (g_pGlobalState->maximizeManager)
+                    g_pGlobalState->maximizeManager->set(window, enabled);
+            };
+            top->m_resource->setSetMaximized([maximizeRequest](CXdgToplevel*) { maximizeRequest(true); });
+            top->m_resource->setUnsetMaximized([maximizeRequest](CXdgToplevel*) { maximizeRequest(false); });
             top->m_resource->setMove([this, weak](CXdgToplevel* resource, wl_resource* seatResource, uint32_t serial) {
                 const auto seat = CWLSeatResource::fromResource(seatResource);
                 if (!seat || seat->client() != resource->client())
@@ -223,6 +242,8 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
                     return;
 
                 if (g_pSeatManager->pointerButtonSerialValid(seat, serial, surface)) {
+                    if (g_pGlobalState->maximizeManager)
+                        g_pGlobalState->maximizeManager->prepareDrag(targetWindow, g_pInputManager->getMouseCoordsInternal());
                     topResource->m_events.requestMove.emit(SXDGToplevelMoveRequest{.seat = seat, .serial = serial});
                     return;
                 }
@@ -253,7 +274,17 @@ void CCSDManager::registerWindow(const PHLWINDOW& window) {
 }
 
 void CCSDManager::unregisterWindow(Desktop::View::CWindow* window) {
-    m_windows.erase(window);
+    if (const auto it = m_windows.find(window); it != m_windows.end()) {
+        auto& hooks = it->second;
+        if (hooks.moveOverridden && hooks.xdgResource) {
+            hooks.xdgResource->setMove(std::move(hooks.originalMove));
+            hooks.xdgResource->setSetMaximized(std::move(hooks.originalMaximize));
+            hooks.xdgResource->setUnsetMaximized(std::move(hooks.originalUnmaximize));
+        }
+        if (const auto owner = hooks.window.lock(); owner && hooks.ownsMaxSuppression)
+            owner->m_suppressedEvents &= ~Desktop::View::SUPPRESS_MAXIMIZE;
+        m_windows.erase(it);
+    }
     if (const auto stylusWindow = m_stylusCSDWindow.lock(); stylusWindow && stylusWindow.get() == window) {
         m_stylusCSDWindow.reset();
         m_stylusCSDActive    = false;
@@ -286,8 +317,10 @@ void CCSDManager::applySuppression(const PHLWINDOW& window) {
     if (!window)
         return;
 
-    auto&      hooks = m_windows[window.get()];
-    const bool want  = windowHasCSD(window) && !g_pGlobalState->config.maximizeAction->value().empty();
+    auto& hooks = m_windows[window.get()];
+    // Wayland requests are replaced above, so do not modify their suppression
+    // flags. XWayland stateChanged needs native maximize suppressed first.
+    const bool want = window->m_isX11;
     if (want == hooks.maxSuppressionWanted)
         return;
 
@@ -305,19 +338,20 @@ void CCSDManager::applySuppression(const PHLWINDOW& window) {
 
 void CCSDManager::handleClientState(const PHLWINDOWREF& weak) {
     const auto window = weak.lock();
-    if (!window || !windowHasCSD(window))
+    if (!window)
         return;
 
-    bool minimize = false;
-    bool maximize = false;
+    bool                minimize = false;
+    std::optional<bool> maximize;
 
     if (const auto xdg = window->m_xdgSurface.lock(); xdg && xdg->m_toplevel.lock()) {
         const auto top = xdg->m_toplevel.lock();
         minimize       = top->m_state.requestsMinimize.value_or(false);
-        maximize       = top->m_state.requestsMaximize.has_value();
+        // Wayland maximize is handled by the resource callbacks above.
     } else if (const auto xwayland = window->m_xwaylandSurface.lock()) {
         minimize = xwayland->m_state.requestsMinimize.value_or(false);
-        maximize = xwayland->m_state.requestsMaximize.has_value();
+        maximize = xwayland->m_state.requestsMaximize;
+        xwayland->m_state.requestsMaximize.reset();
         if (minimize) {
             xwayland->m_state.requestsMinimize.reset();
             xwayland->setMinimized(false);
@@ -326,8 +360,12 @@ void CCSDManager::handleClientState(const PHLWINDOWREF& weak) {
 
     if (minimize)
         runTouchbarAction(window, eTouchbarButtonAction::MINIMIZE);
-    if (maximize && !g_pGlobalState->config.maximizeAction->value().empty())
-        runTouchbarAction(window, eTouchbarButtonAction::MAXIMIZE);
+    if (maximize.has_value() && m_windows[window.get()].ownsMaxSuppression) {
+        if (!g_pGlobalState->config.maximizeAction->value().empty())
+            runTouchbarAction(window, eTouchbarButtonAction::MAXIMIZE);
+        else if (g_pGlobalState->maximizeManager)
+            g_pGlobalState->maximizeManager->set(window, *maximize);
+    }
 }
 
 PHLWINDOW CCSDManager::csdWindowAt(const Vector2D& position) const {
@@ -427,6 +465,8 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
         }
 
         if (!m_dragging) {
+            if (g_pGlobalState->maximizeManager && g_pGlobalState->maximizeManager->prepareDrag(window, position))
+                m_dragGrabOffset = position - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
             if (Desktop::focusState()->window() != window)
                 Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
             if (window->m_isFloating)
@@ -461,6 +501,8 @@ void CCSDManager::updateDrag(Event::SCallbackInfo& info, const Vector2D& positio
     if (window->m_isFloating)
         Desktop::windowState()->raise(window);
 
+    if (g_pGlobalState->maximizeManager)
+        g_pGlobalState->maximizeManager->prepareDrag(window, position);
     g_layoutManager->beginDragTarget(window->layoutTarget(), MBIND_MOVE, std::nullopt, true);
     m_dragging = true;
 }
@@ -763,6 +805,9 @@ void CCSDManager::onTabletAxis(CTablet::SAxisEvent event, Event::SCallbackInfo& 
         return;
 
     if (!m_stylusWindowMoved) {
+        const auto point = g_pInputManager->getMouseCoordsInternal();
+        if (g_pGlobalState->maximizeManager && g_pGlobalState->maximizeManager->prepareDrag(window, point))
+            m_stylusGrabOffset = point - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
         if (Desktop::focusState()->window() != window)
             Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
         if (window->m_isFloating)

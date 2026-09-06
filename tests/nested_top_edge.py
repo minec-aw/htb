@@ -35,6 +35,7 @@ with tempfile.TemporaryDirectory(prefix="htb-edge-test-") as temp:
     config = tmp / "hyprland.conf"
     config.write_text(f"""monitor = ,1000x700@60,auto,1
 animations:enabled = false
+input:follow_mouse = 2
 general:gaps_in = 6
 general:gaps_out = 10
 decoration:rounding = 8
@@ -71,8 +72,8 @@ exec-once = alacritty --class htb-regression
             time.sleep(0.08)
         def input_(kind, x=0, y=0, id_=7):
             dispatch("htb-test.input", f"{kind} {x} {y} {id_}")
-        def client():
-            return next((w for w in json.loads(ctl("clients", "-j")) if w["class"] == "htb-regression"), None)
+        def client(name="htb-regression"):
+            return next((w for w in json.loads(ctl("clients", "-j")) if w["class"] == name), None)
         wait_for(client)
         assert not ctl("configerrors"), ctl("configerrors")
         assert "Plugin hyprtouchbar by" in ctl("plugin", "list")
@@ -88,7 +89,7 @@ exec-once = alacritty --class htb-regression
             return client()
         def assert_maximized():
             w = client()
-            assert w["fullscreen"] == 1 and w["fullscreenClient"] == 1, w
+            assert w["fullscreen"] == (0 if w["floating"] else 1) and w["fullscreenClient"] == 1, w
         def assert_normal():
             w = client()
             assert w["fullscreen"] == 0 and w["fullscreenClient"] == 0, w
@@ -259,6 +260,183 @@ exec-once = alacritty --class htb-regression
         mouse_drag(4)
         assert_maximized()
         print("PASS unload/reload with existing client, then snap again")
+
+        original = reset()
+        input_("expect-rounded")
+        input_("client-maximize")
+        assert_maximized()
+        input_("expect-client-maximized")
+        input_("expect-square")
+        input_("expect-work-area")
+        assert not any(ws["hasfullscreen"] for ws in json.loads(ctl("workspaces", "-j"))), ctl("workspaces", "-j")
+        first = client()
+        input_("client-maximize")
+        assert client()["at"] == first["at"] and client()["size"] == first["size"]
+        input_("client-unmaximize")
+        assert_normal()
+        input_("expect-client-normal")
+        input_("expect-rounded")
+        assert client()["at"] == original["at"] and client()["size"] == original["size"], client()
+        print("PASS desktop maximize is non-exclusive, square, idempotent, and restores geometry/decorations")
+
+        input_("client-maximize")
+        input_("fullscreen")
+        assert client()["fullscreen"] == 2 and client()["fullscreenClient"] == 2, client()
+        input_("restore")
+        assert_maximized()
+        input_("expect-square")
+        input_("client-unmaximize")
+        assert_normal()
+        input_("expect-rounded")
+        assert client()["size"] == original["size"], client()
+        print("PASS true fullscreen round-trip preserves preceding desktop-maximized state")
+
+        original = reset()
+        input_("client-maximize")
+        input_("expect-work-area")
+        mon_name = json.loads(ctl("monitors", "-j"))[0]["name"]
+        assert ctl("keyword", "monitor", mon_name + ",addreserved,34,0,0,0") == "ok"
+        time.sleep(0.5)
+        input_("expect-work-area")
+        input_("expect-square")
+        assert ctl("keyword", "decoration:rounding", "12") == "ok"
+        assert ctl("keyword", "general:border_size", "2") == "ok"
+        input_("client-unmaximize")
+        input_("expect-frame", 12, 2)
+        assert client()["size"] == original["size"]
+        assert ctl("keyword", "decoration:rounding", "8") == "ok"
+        assert ctl("keyword", "general:border_size", "1") == "ok"
+        assert ctl("keyword", "monitor", mon_name + ",addreserved,0,0,0,0") == "ok"
+        print("PASS panel reservation changes and updated frame configuration survive maximize/restore")
+
+        original = reset()
+        input_("client-maximize")
+        w = client()
+        input_("hover", w["at"][0] + 200, w["at"][1] - 20)
+        input_("down")
+        input_("move", 400, 250)
+        input_("move", 450, 300)
+        input_("up")
+        assert_normal()
+        assert client()["size"] == original["size"], client()
+        input_("expect-rounded")
+        print("PASS drag down restores floating size and normal decorations")
+
+        original = reset()
+        input_("client-maximize")
+        input_("hover", 300, 300)
+        input_("down")
+        input_("native-move")
+        input_("move", 320, 330)
+        input_("move", 440, 370)
+        input_("up")
+        assert_normal()
+        assert client()["size"] == original["size"], client()
+        input_("expect-rounded")
+        print("PASS native modifier-drag rebases onto restored floating geometry")
+
+        original = reset()
+        input_("client-maximize")
+        dispatch("togglefloating")
+        assert not client()["floating"], client()
+        assert_maximized()
+        input_("client-unmaximize")
+        assert_normal()
+        assert not client()["floating"], client()
+        input_("expect-rounded")
+        input_("client-maximize")
+        assert_maximized()
+        input_("expect-square")
+        input_("client-unmaximize")
+        assert not client()["floating"], client()
+        print("PASS switching maximized float to tiled uses native maximize and returns to tiling")
+
+        original = reset()
+        input_("client-maximize")
+        input_("expect-square")
+        dispatch("exec", "alacritty --class htb-overlay")
+        wait_for(lambda: client("htb-overlay"))
+        overlay = client("htb-overlay")
+        dispatch("focuswindow", "address:" + overlay["address"])
+        if not client("htb-overlay")["floating"]:
+            dispatch("togglefloating")
+        dispatch("resizewindowpixel", "exact 300 240,address:" + overlay["address"])
+        dispatch("movewindowpixel", "exact 600 250,address:" + overlay["address"])
+        # A normal mouse click, not Alt-Tab or a forced hover/refocus, must hit
+        # the visible floating overlay even though the browser is maximized.
+        input_("move", 720, 330)
+        input_("down")
+        input_("up")
+        assert json.loads(ctl("activewindow", "-j"))["class"] == "htb-overlay"
+        input_("expect-pointer-focus")
+        # Click exposed browser content: it should rise and cover the overlay,
+        # not leave a visible but unclickable ghost on top.
+        input_("move", 150, 150)
+        input_("down")
+        input_("up")
+        assert json.loads(ctl("activewindow", "-j"))["class"] == "htb-regression"
+        input_("expect-pointer-focus")
+        input_("move", 720, 330)
+        input_("down")
+        input_("up")
+        assert json.loads(ctl("activewindow", "-j"))["class"] == "htb-regression"
+        input_("expect-pointer-focus")
+        dispatch("focuswindow", "address:" + overlay["address"])
+        input_("move", 720, 330)
+        input_("down")
+        input_("up")
+        assert json.loads(ctl("activewindow", "-j"))["class"] == "htb-overlay"
+        input_("expect-pointer-focus")
+        print("PASS normal click/raise and pointer focus agree with overlapping floating windows")
+
+        input_("client-maximize")
+        assert client("htb-overlay")["fullscreen"] == 0 and client("htb-overlay")["fullscreenClient"] == 1
+        assert_maximized()
+        assert not any(ws["hasfullscreen"] for ws in json.loads(ctl("workspaces", "-j")))
+        input_("client-unmaximize")
+        assert client("htb-overlay")["size"] == [300, 240]
+        assert_maximized()
+        print("PASS multiple independent floating maximizations do not claim the workspace")
+
+        dispatch("focuswindow", "address:" + original["address"])
+        input_("client-unmaximize")
+        input_("expect-rounded")
+        assert client()["size"] == original["size"]
+        input_("client-maximize")
+        assert ctl("plugin", "unload", str(PLUGIN)) == "ok"
+        assert_normal()
+        input_("expect-rounded")
+        assert client()["size"] == original["size"]
+        print("PASS unload restores desktop-maximized geometry, decorations and client state")
+        assert ctl("plugin", "load", str(PLUGIN)) == "ok"
+        wait_for(lambda: "Plugin hyprtouchbar by" in ctl("plugin", "list"))
+        # Verify actual tile geometry with two participants, not just the flag.
+        for name in ("htb-regression", "htb-overlay"):
+            w = client(name)
+            dispatch("focuswindow", "address:" + w["address"])
+            if w["floating"]:
+                dispatch("togglefloating")
+        dispatch("focuswindow", "address:" + client()["address"])
+        tile_boxes = {name: (client(name)["at"], client(name)["size"]) for name in ("htb-regression", "htb-overlay")}
+        input_("client-maximize")
+        assert_maximized()
+        input_("expect-square")
+        input_("client-unmaximize")
+        for name, geometry in tile_boxes.items():
+            w = client(name)
+            assert not w["floating"] and (w["at"], w["size"]) == geometry, (name, w, geometry)
+        print("PASS two-window tiled layout restores the same slots and sizes")
+
+        reset()
+        assert ctl("keyword", "plugin:hyprtouchbar:maximize_mode", "native") == "ok"
+        input_("client-maximize")
+        assert client()["floating"] and client()["fullscreen"] == 1 and client()["fullscreenClient"] == 1, client()
+        input_("expect-square")
+        input_("client-unmaximize")
+        assert_normal()
+        assert client()["floating"]
+        assert ctl("keyword", "plugin:hyprtouchbar:maximize_mode", "auto") == "ok"
+        print("PASS optional native mode retains layout fullscreen behavior for floating windows")
     except Exception:
         log.flush()
         log.seek(0)

@@ -27,6 +27,7 @@
 #include "globals.hpp"
 #include "AppIcon.hpp"
 #include "TopEdgeSnap.hpp"
+#include "MaximizeManager.hpp"
 #include "BarPassElement.hpp"
 
 #include <climits>
@@ -223,6 +224,8 @@ void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
 
     const auto PWINDOW = m_pWindow.lock();
     if (!m_bDraggingThis) {
+        if (g_pGlobalState->maximizeManager && g_pGlobalState->maximizeManager->prepareDrag(PWINDOW, COORDS))
+            m_touchGrabOffset = COORDS - PWINDOW->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
         // `setfloating` is idempotent. Unlike the old implementation, do not
         // resize an already-floating window and never tile it on release.
         if (!PWINDOW->m_isFloating)
@@ -308,7 +311,10 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 
     if (!ON_DOUBLE_CLICK.empty() &&
         std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
-        Config::Supplementary::executor()->spawn(ON_DOUBLE_CLICK);
+        if (ON_DOUBLE_CLICK == "maximize")
+            runTouchbarAction(PWINDOW, eTouchbarButtonAction::MAXIMIZE);
+        else
+            Config::Supplementary::executor()->spawn(ON_DOUBLE_CLICK);
         m_bDragPending = false;
     } else {
         m_lastMouseDown = Time::steadyNow();
@@ -349,6 +355,8 @@ void CHyprBar::handleMovement() {
     // received the press, not whichever window is now under the pointer.
     if (!validMapped(m_pWindow) || g_layoutManager->dragController()->target())
         return;
+    if (g_pGlobalState->maximizeManager)
+        g_pGlobalState->maximizeManager->prepareDrag(m_pWindow.lock(), g_pInputManager->getMouseCoordsInternal());
     g_layoutManager->beginDragTarget(m_pWindow->layoutTarget(), MBIND_MOVE);
     m_bDraggingThis = true;
     Log::logger->log(Log::DEBUG, "[hyprtouchbar] Dragging initiated on {:x}", (uintptr_t)m_pWindow.lock().get());

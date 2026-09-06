@@ -1,5 +1,5 @@
 project('hyprtouchbar', 'cpp',
-  version: '1.5.0',
+  version: '1.6.0',
   default_options: ['buildtype=release'],
 )
 
@@ -25,6 +25,7 @@ src = files(
   'CSDManager.cpp',
   'AppIcon.cpp',
   'TopEdgeSnap.cpp',
+  'MaximizeManager.cpp',
 )
 
 shared_module(meson.project_name(), src,

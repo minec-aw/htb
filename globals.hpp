@@ -31,12 +31,14 @@ struct SHyprButton {
 class CHyprBar;
 class CCSDManager;
 class CTopEdgeSnap;
+class CMaximizeManager;
 
 struct SGlobalState {
     std::vector<SHyprButton>  buttons;
     std::vector<WP<CHyprBar>> bars;
     UP<CCSDManager>           csdManager;
     UP<CTopEdgeSnap>          topEdgeSnap;
+    UP<CMaximizeManager>      maximizeManager;
 
     uint32_t                  nobarRuleIdx      = 0;
     uint32_t                  barColorRuleIdx   = 0;
@@ -59,7 +61,7 @@ struct SGlobalState {
         SP<Config::Values::CBoolValue>       barBlur, barTitleEnabled, barPartOfWindow, barPrecedenceOverBorder, enabled, iconOnHover;
         SP<Config::Values::CBoolValue>   builtinButtons, showClose, showMaximize, showMinimize, showAppIcon, stylusDragEnabled, csdDragEnabled, csdTouchEmulation, csdDragFallback;
         SP<Config::Values::CStringValue> barTextFont, barTextAlign, barButtonsAlignment, appIconTheme, buttonIconTheme, onDoubleClick;
-        SP<Config::Values::CStringValue> csdDetection, minimizeAction, maximizeAction, closeAction;
+        SP<Config::Values::CStringValue> csdDetection, minimizeAction, maximizeAction, closeAction, maximizeMode;
     } config;
 };
 

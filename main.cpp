@@ -16,6 +16,7 @@
 #include "barDeco.hpp"
 #include "CSDManager.hpp"
 #include "TopEdgeSnap.hpp"
+#include "MaximizeManager.hpp"
 #include "globals.hpp"
 
 extern "C" {
@@ -187,7 +188,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(barButtonsAlignment, CStringValue, "bar_buttons_alignment", "Button alignment: left or right", "right");
     ADD_CONFIG(appIconTheme, CStringValue, "app_icon_theme", "Freedesktop icon theme name", "hicolor");
     ADD_CONFIG(buttonIconTheme, CStringValue, "button_icon_theme", "Icon theme for Linux caption controls", "Adwaita");
-    ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "Shell command run on titlebar double click", "hyprctl dispatch fullscreenstate 1 2");
+    ADD_CONFIG(onDoubleClick, CStringValue, "on_double_click", "maximize for built-in toggle, or a shell command on titlebar double click", "maximize");
     ADD_CONFIG(csdDetection, CStringValue, "csd_detection", "CSD detection: auto, all, or off", "auto");
     ADD_CONFIG(stylusDragEnabled, CBoolValue, "stylus_drag_enabled", "Forward stylus tip input through titlebar pointer handling", true);
     ADD_CONFIG(csdDragEnabled, CBoolValue, "csd_drag_enabled", "Enable touch interaction with CSD titlebars", true);
@@ -200,7 +201,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ADD_CONFIG(topEdgeMaximize, CBoolValue, "top_edge_maximize", "Maximize on window-drag release at a monitor's top edge", true);
     ADD_CONFIG(topEdgeDistance, CIntValue, "top_edge_distance", "Top-edge release zone in logical pixels (0-128)", 12);
     ADD_CONFIG(minimizeAction, CStringValue, "minimize_action", "Dispatcher action for SSD and CSD minimize", "movetoworkspacesilent special:minimized");
-    ADD_CONFIG(maximizeAction, CStringValue, "maximize_action", "Dispatcher action overriding native maximize; empty keeps native", "");
+    ADD_CONFIG(maximizeAction, CStringValue, "maximize_action", "Dispatcher action overriding maximize; empty uses maximize_mode", "");
+    ADD_CONFIG(maximizeMode, CStringValue, "maximize_mode", "auto: desktop-style floating maximize, native tiling; native: always use layout maximize", "auto");
     ADD_CONFIG(closeAction, CStringValue, "close_action", "Dispatcher action overriding native close; empty keeps native", "");
 
     HyprlandAPI::addLuaFunction(PHANDLE, "hyprtouchbar", "add_button", ::newLuaButton);
@@ -210,21 +212,23 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto preReload    = Event::bus()->m_events.config.preReload.listen([] { onPreConfigReload(); });
     static auto reloaded     = Event::bus()->m_events.config.reloaded.listen([] { onConfigReloaded(); });
 
-    g_pGlobalState->topEdgeSnap = makeUnique<CTopEdgeSnap>();
-    g_pGlobalState->csdManager  = makeUnique<CCSDManager>();
+    g_pGlobalState->maximizeManager = makeUnique<CMaximizeManager>();
+    g_pGlobalState->topEdgeSnap     = makeUnique<CTopEdgeSnap>();
+    g_pGlobalState->csdManager      = makeUnique<CCSDManager>();
     for (const auto& window : Desktop::windowState()->windows()) {
         if (!window->isHidden() && validMapped(window))
             onNewWindow(window);
     }
 
     HyprlandAPI::reloadConfig();
-    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.5.0"};
+    return {"hyprtouchbar", "Modern, touch-friendly and CSD-aware titlebars", "hyprtouchbar contributors", "1.6.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
     // Cancel idle maximization before input cleanup synthesizes releases.
     g_pGlobalState->topEdgeSnap.reset();
     g_pGlobalState->csdManager.reset();
+    g_pGlobalState->maximizeManager.reset();
     for (const auto& monitor : State::monitorState()->monitors())
         monitor->m_scheduledRecalc = true;
     g_pHyprRenderer->m_renderPass.removeAllOfType("CBarPassElement");

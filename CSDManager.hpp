@@ -28,9 +28,11 @@ class CCSDManager {
 
   private:
     struct SWindowHooks {
+        PHLWINDOWREF                                               window;
         CHyprSignalListener                                        stateChanged;
         SP<CXdgToplevel>                                           xdgResource;
         std::function<void(CXdgToplevel*, wl_resource*, uint32_t)> originalMove;
+        std::function<void(CXdgToplevel*)>                         originalMaximize, originalUnmaximize;
         bool                                                       moveOverridden       = false;
         bool                                                       listening            = false;
         bool                                                       maxSuppressionWanted = false;
@@ -41,6 +43,7 @@ class CCSDManager {
 
     CHyprSignalListener                                       m_windowOpen;
     CHyprSignalListener                                       m_windowDestroy;
+    CHyprSignalListener                                       m_windowClose;
     CHyprSignalListener                                       m_mouseButton;
     CHyprSignalListener                                       m_mouseMove;
     CHyprSignalListener                                       m_touchDown;

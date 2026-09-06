@@ -1,6 +1,7 @@
 #include "TopEdgeSnap.hpp"
 #include "TopEdgePolicy.hpp"
 #include "globals.hpp"
+#include "MaximizeManager.hpp"
 
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/desktop/state/GlobalWindowController.hpp>
@@ -83,9 +84,9 @@ void CTopEdgeSnap::finish(const PHLWINDOW& window, const Vector2D& release) {
             Desktop::globalWindowController()->moveWindowToWorkspace(window, workspace);
         }
 
-        // Explicitly set both modes: no toggle, no shell command, independent
-        // of Lua/legacy parsers and maximize_action. Hyprland saves floating
-        // size here and restores it through the ordinary maximize button.
-        Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_MAXIMIZED, Fullscreen::FSMODE_MAXIMIZED);
+        // The same stateful maximize path as caption buttons. Tiled windows
+        // stay layout-managed; floating windows keep normal z-order.
+        if (g_pGlobalState->maximizeManager)
+            g_pGlobalState->maximizeManager->set(window, true);
     });
 }

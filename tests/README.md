@@ -1,4 +1,4 @@
-# Top-edge maximize regression tests
+# Maximization and top-edge regression tests
 
 `make test` builds a standalone C++ policy test without Hyprland. It covers the
 release zone, clicks/jitter, threshold boundaries, negative monitor offsets,
@@ -26,6 +26,20 @@ Automated scenarios:
 - Native CSD tablet/touch move-request completion and restore.
 - A CSD gesture without a move request must not maximize.
 - Unload/reload with an existing client, followed by another top-edge drag.
+- Desktop-style floating maximize: internal/client modes `0/1`, no workspace
+  fullscreen claim, and actual XDG maximize/restore state.
+- Square, borderless, shadowless maximization and restoration of the original
+  floating geometry and current frame configuration.
+- Fullscreen/F11 round-trip back to desktop maximization.
+- Panel reserved-area changes and drag-down/modifier-drag restoration.
+- Converting a maximized floating window to tiled mode, then restoring to tiling.
+- Overlapping floating windows with `follow_mouse = 2`: mouse clicks and explicit
+  activation raise the expected window and pointer/keyboard focus agree.
+- Multiple independent desktop-maximized floating windows.
+- Two tiled windows restore to the exact same tile slots and sizes.
+- Optional `maximize_mode = native` compatibility behavior.
+- Unloading while desktop-maximized restores geometry, decorations and client
+  state instead of leaving a client-only maximized window behind.
 
 The driver synthesizes events into Hyprland's input paths, not `/dev/uinput`.
 For native CSD request tests it marks the probe client as CSD and calls the

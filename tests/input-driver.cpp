@@ -113,6 +113,44 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             const auto top  = w->m_xdgSurface->m_toplevel.lock();
             const auto seat = g_pSeatManager->seatResourceForClient(top->m_resource->client());
             top->m_resource->requests.move(top->m_resource.get(), seat->m_resource->resource(), g_pSeatManager->nextSerial(seat));
+        } else if (type == "client-maximize" || type == "client-unmaximize") {
+            const auto w   = Desktop::focusState()->window();
+            const auto top = w->m_xdgSurface->m_toplevel.lock();
+            if (type == "client-maximize")
+                top->m_resource->requests.setMaximized(top->m_resource.get());
+            else
+                top->m_resource->requests.unsetMaximized(top->m_resource.get());
+        } else if (type == "expect-client-maximized" || type == "expect-client-normal") {
+            const auto w         = Desktop::focusState()->window();
+            const auto top       = w->m_xdgSurface->m_toplevel.lock();
+            const bool maximized = std::ranges::find(top->m_pendingApply.states, XDG_TOPLEVEL_STATE_MAXIMIZED) != top->m_pendingApply.states.end();
+            if (maximized != (type == "expect-client-maximized"))
+                return {.success = false, .error = "XDG wire maximized state disagrees with window state"};
+        } else if (type == "expect-square") {
+            const auto w = Desktop::focusState()->window();
+            if (w->getRealBorderSize() != 0 || w->rounding() != 0 || !w->m_ruleApplicator->noShadow().valueOrDefault())
+                return {.success = false, .error = "maximized frame still decorated"};
+        } else if (type == "expect-rounded") {
+            const auto w = Desktop::focusState()->window();
+            if (w->getRealBorderSize() == 0 || w->rounding() == 0 || w->m_ruleApplicator->noShadow().valueOrDefault())
+                return {.success = false, .error = "restored frame still stripped"};
+        } else if (type == "expect-frame") {
+            const auto w = Desktop::focusState()->window();
+            if (w->rounding() != x || w->getRealBorderSize() != y)
+                return {.success = false, .error = "frame properties not restored to current configuration"};
+        } else if (type == "expect-work-area") {
+            const auto w       = Desktop::focusState()->window();
+            const auto area    = w->m_monitor->logicalBoxMinusReserved();
+            const auto extents = w->getFullWindowReservedArea();
+            const auto actual  = w->geometricBox(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+            if (actual.pos() != area.pos() + extents.topLeft || actual.size() != area.size() - extents.topLeft - extents.bottomRight)
+                return {.success = false, .error = "maximized bounds do not match usable area plus titlebar"};
+        } else if (type == "expect-pointer-focus") {
+            const auto w = Desktop::focusState()->window();
+            if (w->wlSurface()->resource() != g_pSeatManager->m_state.pointerFocus.lock())
+                return {.success = false, .error = "keyboard and pointer focus disagree"};
+        } else if (type == "fullscreen") {
+            Fullscreen::controller()->setFullscreenMode(Desktop::focusState()->window(), Fullscreen::FSMODE_FULLSCREEN, Fullscreen::FSMODE_FULLSCREEN);
         } else if (type == "restore") {
             Fullscreen::controller()->setFullscreenMode(Desktop::focusState()->window(), Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);
         }

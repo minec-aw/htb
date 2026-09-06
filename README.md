@@ -7,7 +7,7 @@ It adds server-side titlebars only when an application does not already have cli
 - protocol-based CSD detection (no application-name blacklist)
 - protocol-driven touchscreen dragging using each application's exact CSD draggable regions
 - working CSD minimize requests with a configurable Hyprland dispatcher action
-- native CSD maximize behavior, or an optional configurable override
+- desktop-style floating maximization and layout-native tiled maximization
 - drag-to-top maximization on release (mouse, touch, and stylus)
 - application icons resolved from desktop files and freedesktop icon themes
 - large built-in close, maximize, and minimize targets
@@ -96,7 +96,10 @@ plugin:hyprtouchbar {
     csd_controls_right = 150
     csd_drag_threshold = 8
 
-    # Arguments to `hyprctl dispatch` (not shell commands)
+    maximize_mode = auto
+    on_double_click = maximize
+
+    # Dispatcher name + arguments in legacy notation (also works with Lua configs)
     minimize_action = movetoworkspacesilent special:minimized
     maximize_action =
     close_action =
@@ -105,7 +108,7 @@ plugin:hyprtouchbar {
 
 The built-in controls load the same freedesktop symbolic icon names Chromium/Helium requests on Linux: `window-minimize-symbolic`, `window-maximize-symbolic`, `window-restore-symbolic`, and `window-close-symbolic`. The maximize glyph automatically changes to restore while maximized. Text glyphs are used only if the selected icon theme does not provide these assets.
 
-`maximize_action` being empty preserves Hyprland's native maximize/unmaximize response to a CSD button. Setting it suppresses native maximize and dispatches your action instead. `close_action` behaves similarly for the plugin's server-side close button.
+`maximize_action` being empty uses `maximize_mode`. Setting an action replaces maximize button behavior with that dispatcher instead. `close_action` behaves similarly for the plugin's server-side close button. The default `on_double_click = maximize` uses the same maximize handler; any other nonempty value remains a shell command.
 
 Hyprland has no native minimize model. The default sends a window to `special:minimized`; show it again with:
 
@@ -122,6 +125,50 @@ minimize_action = movetoworkspacesilent 9
 # Make maximize toggle floating instead
 maximize_action = togglefloating
 ```
+
+## Maximization and tiling
+
+`maximize_mode = auto` is the default:
+
+- **Floating windows:** fill the monitor's usable area (excluding panels), while
+  staying in normal floating z-order. Clicking or explicitly activating another
+  floating window raises it normally; clicking the maximized window raises it
+  over other unpinned floating windows. There is no workspace fullscreen input
+  priority and multiple floating windows can be maximized independently.
+- **Tiled windows and window groups:** use Hyprland's native layout maximization.
+  Restoring returns to the tiled layout; the plugin does not force them floating
+  or replace the tiling algorithm.
+- Both paths remove compositor borders, rounding and outer shadows while
+  maximized, **without removing the titlebar or buttons**. Restoring removes only
+  the temporary overrides so your normal rules and current configuration apply.
+- Floating geometry is saved/restored. Dragging a desktop-maximized window
+  restores its floating size under the pointer/finger/pen. Switching it to tiled
+  mode transfers maximization to the native layout; restoring then returns to
+  tiling. The reverse transition uses desktop maximization.
+- CSD requests, built-in buttons, double-click and top-edge snapping share this
+  handling. Repeated `set_maximized`/`unset_maximized` requests are idempotent, and
+  the actual XDG/EWMH maximize state is updated for the client.
+- Actual fullscreen (F11) remains native. A desktop-maximized window temporarily
+  entering fullscreen returns to its maximized work-area size when it exits.
+- Panel/monitor changes update maximized floating bounds. Unloading the plugin
+  restores its desktop-maximized windows rather than leaving client-only state
+  behind.
+
+In your existing Lua plugin configuration:
+
+```lua
+maximize_mode = "auto",
+on_double_click = "maximize",
+```
+
+Use `maximize_mode = "native"` to retain Hyprland's workspace-fullscreen-style
+maximization even for floating windows. This compatibility mode retains core
+stacking/input behavior; it is not the floating click-through fix. Tiling works
+in **both** modes.
+
+In `hyprctl clients`, a desktop-maximized floating window intentionally shows
+`fullscreen: 0, fullscreenClient: 1`. A natively maximized tiled window shows
+`fullscreen: 1, fullscreenClient: 1`; true fullscreen is `2`.
 
 ## How CSD detection works
 
@@ -171,7 +218,7 @@ hyprtouchbar = {
 
 `top_edge_distance` is the release zone's height in **logical pixels**, clamped to 0–128. `0` requires the exact edge. It uses each monitor's actual top edge, including on scaled/offset outputs; maximized geometry respects Hyprland's workspace work area, panels and gaps. Disable the feature with `top_edge_maximize = false`.
 
-Only completed window-move gestures qualify. Clicking a titlebar button, resizing, dragging tabs/widgets without a compositor window move, cancellation, or moving away from the top before releasing will not trigger it. Originally pinned windows are left alone. Top-edge maximize is independent of `maximize_action` and sets the native maximized state rather than true fullscreen. The normal maximize/restore button restores the floating size saved by Hyprland immediately before maximizing (or the tiled layout for tiled windows).
+Only completed window-move gestures qualify. Clicking a titlebar button, resizing, dragging tabs/widgets without a compositor window move, cancellation, or moving away from the top before releasing will not trigger it. Originally pinned windows are left alone. Top-edge maximize is independent of `maximize_action` and uses `maximize_mode`, not true fullscreen. The normal maximize/restore button restores the saved floating geometry (or the tiled layout for tiled windows).
 
 ## Touch and stylus dragging notes
 
